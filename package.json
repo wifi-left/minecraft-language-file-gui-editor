@@ -18,10 +18,6 @@
     "translation",
     "i18n"
   ],
-  "activationEvents": [
-    "onCustomEditor:minecraftLanguageEditor.gridEditor",
-    "onCommand:minecraftLanguageEditor.openEditor"
-  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
@@ -104,6 +100,9 @@
           },
           {
             "filenamePattern": "zh_cn.json"
+          },
+          {
+            "filenamePattern": "zh_hk.json"
           },
           {
             "filenamePattern": "zh_tw.json"
@@ -252,6 +251,7 @@
     "eslint": "^10.5.0",
     "globals": "^17.12.0"
   },
+  "repository": "https://github.com/wifi-left/minecraft-language-file-gui-editor",
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
