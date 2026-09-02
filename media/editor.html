@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; img-src data: {cspSource}; style-src {cspSource} 'unsafe-inline'; font-src {cspSource}; script-src 'nonce-{nonce}';">
+    <title>Minecraft 语言文件编辑器</title>
+    <link rel="stylesheet" href="{cssUri}">
+</head>
+<body>
+    <div id="app" class="hidden">
+        <header id="toolbar">
+            <div class="tb-row">
+                <span class="folder-badge" title="" id="folderBadge"></span>
+                <span id="bindInfo" class="muted"></span>
+                <div class="spacer"></div>
+                <button id="btnReload" class="tb" title="从磁盘重新加载 (会清空撤销历史)">⟳ <span data-i18n="reload">重新加载</span></button>
+                <button id="btnUndo" class="tb" title="撤销 (Ctrl+Z)" disabled>↩ 撤销</button>
+                <button id="btnRedo" class="tb" title="重做 (Ctrl+Y)" disabled>↪ 重做</button>
+                <button id="btnAdd" class="tb accent" title="添加一个新的翻译 key (将同步写入所有语言文件)">＋ 添加 key</button>
+                <button id="btnDelete" class="tb danger" title="删除选中的翻译 (从所有语言文件删除)" disabled>🗑 删除</button>
+            </div>
+            <div class="tb-row">
+                <div class="filter-wrap">
+                    <span class="filter-icon">🔍</span>
+                    <input id="filterInput" type="text" spellcheck="false"
+                           placeholder="筛选: key 或任意语言译文  ( / 聚焦)">
+                </div>
+                <label class="only-missing" title="仅显示在当前语言中为空(未翻译)的行">
+                    <input type="checkbox" id="onlyMissingCheck"> 仅显示未翻译
+                </label>
+                <div class="spacer"></div>
+                <div class="lang-chips" id="langChips"></div>
+            </div>
+        </header>
+
+        <div id="notices"></div>
+
+        <div id="addBar" class="hidden">
+            <input id="addKeyInput" type="text" spellcheck="false" placeholder="新 key，如 item.minecraft.custom_sword">
+            <textarea id="addValueInput" rows="2" spellcheck="false"
+                      placeholder="该语言的译文（其它语言将留空 = 未翻译）"></textarea>
+            <div class="add-bar-buttons">
+                <span class="muted">语言:</span>
+                <div id="addLangSelect"></div>
+                <div class="spacer"></div>
+                <button id="addCancel" class="tb">取消</button>
+                <button id="addOk" class="tb accent">添加</button>
+            </div>
+        </div>
+
+        <main id="gridWrap">
+            <div id="grid">
+                <div id="headRow"></div>
+                <div id="bodyScroll">
+                    <div id="rowSpacer"></div>
+                </div>
+            </div>
+            <div id="emptyState" class="hidden"></div>
+        </main>
+
+        <section id="detail" class="hidden">
+            <div class="detail-head">
+                <span class="muted" data-i18n="detailTitle">选中翻译的详情 —— 修改会保存到对应语言文件</span>
+                <span class="spacer"></span>
+                <span id="placeholderWarn" class="warn-chip hidden" title=""></span>
+                <button id="btnCopyKey" class="tb small">复制 key</button>
+                <button id="btnDeleteOne" class="tb small danger">删除此 key</button>
+                <button id="btnCloseDetail" class="tb small" title="Esc">✕</button>
+            </div>
+            <div id="detailRows"></div>
+        </section>
+
+        <footer id="statusbar">
+            <span id="statText"></span>
+            <span class="spacer"></span>
+            <span id="saveState" class="muted">✓ 自动保存</span>
+        </footer>
+    </div>
+
+    <div id="initFail" class="hidden"></div>
+
+    <script nonce="{nonce}" src="{scriptUri}"></script>
+</body>
+</html>

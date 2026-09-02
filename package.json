@@ -1,0 +1,259 @@
+{
+  "name": "minecraft-language-file-gui-editor",
+  "displayName": "Minecraft Language File GUI Editor",
+  "description": "GUI editor for Minecraft language files (en_us.json / zh_cn.json / ...): multi-language grid, add/delete keys across all files, undo/redo.",
+  "version": "0.0.1",
+  "publisher": "wifi-left",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "minecraft",
+    "language",
+    "lang",
+    "translation",
+    "i18n"
+  ],
+  "activationEvents": [
+    "onCustomEditor:minecraftLanguageEditor.gridEditor",
+    "onCommand:minecraftLanguageEditor.openEditor"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "minecraftLanguageEditor.openEditor",
+        "title": "Minecraft 语言文件: 用 GUI 编辑器打开",
+        "category": "Minecraft Lang"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "minecraftLanguageEditor.openEditor",
+          "when": "resourceExtname == .json && resourceScheme == file",
+          "group": "navigation@50"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "minecraftLanguageEditor.gridEditor",
+        "displayName": "Minecraft 语言文件编辑器 (GUI)",
+        "selector": [
+          {
+            "filenamePattern": "en_us.json"
+          },
+          {
+            "filenamePattern": "en_gb.json"
+          },
+          {
+            "filenamePattern": "en_ca.json"
+          },
+          {
+            "filenamePattern": "en_au.json"
+          },
+          {
+            "filenamePattern": "en_nz.json"
+          },
+          {
+            "filenamePattern": "en_pt.json"
+          },
+          {
+            "filenamePattern": "de_de.json"
+          },
+          {
+            "filenamePattern": "fr_fr.json"
+          },
+          {
+            "filenamePattern": "fr_ca.json"
+          },
+          {
+            "filenamePattern": "es_es.json"
+          },
+          {
+            "filenamePattern": "es_mx.json"
+          },
+          {
+            "filenamePattern": "es_ar.json"
+          },
+          {
+            "filenamePattern": "es_uy.json"
+          },
+          {
+            "filenamePattern": "es_ve.json"
+          },
+          {
+            "filenamePattern": "pt_br.json"
+          },
+          {
+            "filenamePattern": "pt_pt.json"
+          },
+          {
+            "filenamePattern": "it_it.json"
+          },
+          {
+            "filenamePattern": "ja_jp.json"
+          },
+          {
+            "filenamePattern": "ko_kr.json"
+          },
+          {
+            "filenamePattern": "zh_cn.json"
+          },
+          {
+            "filenamePattern": "zh_tw.json"
+          },
+          {
+            "filenamePattern": "ru_ru.json"
+          },
+          {
+            "filenamePattern": "uk_ua.json"
+          },
+          {
+            "filenamePattern": "pl_pl.json"
+          },
+          {
+            "filenamePattern": "nl_nl.json"
+          },
+          {
+            "filenamePattern": "sv_se.json"
+          },
+          {
+            "filenamePattern": "nb_no.json"
+          },
+          {
+            "filenamePattern": "fi_fi.json"
+          },
+          {
+            "filenamePattern": "da_dk.json"
+          },
+          {
+            "filenamePattern": "cs_cz.json"
+          },
+          {
+            "filenamePattern": "sk_sk.json"
+          },
+          {
+            "filenamePattern": "hu_hu.json"
+          },
+          {
+            "filenamePattern": "ro_ro.json"
+          },
+          {
+            "filenamePattern": "bg_bg.json"
+          },
+          {
+            "filenamePattern": "el_gr.json"
+          },
+          {
+            "filenamePattern": "tr_tr.json"
+          },
+          {
+            "filenamePattern": "hr_hr.json"
+          },
+          {
+            "filenamePattern": "sr_sp.json"
+          },
+          {
+            "filenamePattern": "lv_lv.json"
+          },
+          {
+            "filenamePattern": "lt_lt.json"
+          },
+          {
+            "filenamePattern": "et_ee.json"
+          },
+          {
+            "filenamePattern": "ca_es.json"
+          },
+          {
+            "filenamePattern": "gl_es.json"
+          },
+          {
+            "filenamePattern": "eu_es.json"
+          },
+          {
+            "filenamePattern": "af_za.json"
+          },
+          {
+            "filenamePattern": "id_id.json"
+          },
+          {
+            "filenamePattern": "ms_my.json"
+          },
+          {
+            "filenamePattern": "vi_vn.json"
+          },
+          {
+            "filenamePattern": "th_th.json"
+          },
+          {
+            "filenamePattern": "hi_in.json"
+          },
+          {
+            "filenamePattern": "ar_sa.json"
+          },
+          {
+            "filenamePattern": "he_il.json"
+          },
+          {
+            "filenamePattern": "fa_ir.json"
+          },
+          {
+            "filenamePattern": "ur_pk.json"
+          },
+          {
+            "filenamePattern": "bn_bd.json"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "configuration": {
+      "title": "Minecraft 语言文件编辑器",
+      "properties": {
+        "minecraftLanguageEditor.confirmDelete": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "删除翻译 key 前弹出确认框。"
+        },
+        "minecraftLanguageEditor.undoLimit": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "markdownDescription": "撤销/重做历史的最大步数（仅当前会话有效）。"
+        },
+        "minecraftLanguageEditor.indentSize": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 16,
+          "markdownDescription": "写回 JSON 文件时使用的缩进空格数（自动保留各文件原有缩进/制表符，仅在无法探测时使用该值；0 = 压缩为单行）。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.134.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "eslint": "^10.5.0",
+    "globals": "^17.12.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  }
+}
