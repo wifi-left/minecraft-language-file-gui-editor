@@ -48,27 +48,21 @@ function activate(context) {
         })
     );
 
-    // Native webview context-menu actions (webview/context contributions).
-    // The panel that was right-clicked remembers the row; the chosen command is
-    // routed back into that panel as {type:'ctxCmd'}.
-    const ctxMenuCommands = {
-        'minecraftLanguageEditor.copyKey': 'copyKey',
-        'minecraftLanguageEditor.copyValue': 'copyValue',
-        'minecraftLanguageEditor.copyEntry': 'copyEntry',
-        'minecraftLanguageEditor.deleteContextKey': 'deleteContextKey'
-    };
-    for (const [cmdId, action] of Object.entries(ctxMenuCommands)) {
-        context.subscriptions.push(
-            vscode.commands.registerCommand(cmdId, () => {
-                provider.broadcast({ type: 'ctxCmd', cmd: action });
-            })
-        );
-    }
-
     // Ctrl+Enter / Ctrl+Shift+Enter (contributed keybindings) → new key.
     context.subscriptions.push(
         vscode.commands.registerCommand('minecraftLanguageEditor.addKeyShortcut', () => {
             provider.broadcast({ type: 'cmdAddKey' });
+        })
+    );
+
+    // Ctrl+Z / Ctrl+Y inside our GUI must undo OUR edits (never VS Code's own
+    // undo on other editors), so route them through the GUI model.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('minecraftLanguageEditor.undoKeys', () => {
+            provider.broadcast({ type: 'cmdUndo' });
+        }),
+        vscode.commands.registerCommand('minecraftLanguageEditor.redoKeys', () => {
+            provider.broadcast({ type: 'cmdRedo' });
         })
     );
 

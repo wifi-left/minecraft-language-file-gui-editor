@@ -528,7 +528,7 @@ body.dock-resizing { user-select: none; }
     z-index: 3000;
     min-width: 200px;
     max-width: 340px;
-    background: var(--vscode-menubar-selectionBackground, var(--vscode-editorWidget-background, var(--input-bg)));
+    background: var(--vscode-editorWidget-background, #252526);
     color: var(--vscode-menubar-selectionForeground, var(--fg));
     border: 1px solid var(--vscode-menu-border, var(--border));
     border-radius: 4px;
@@ -548,6 +548,9 @@ body.dock-resizing { user-select: none; }
 .ctx-menu .ctx-item:hover {
     background: var(--vscode-menu-selectionBackground, var(--accent));
     color: var(--vscode-menu-selectionForeground, #ffffff);
+}
+.ctx-menu .ctx-item.danger:hover {
+    background: rgba(192, 57, 43, 0.85);
 }
 .ctx-menu .ctx-item .l { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .ctx-menu .ctx-item .hint { opacity: 0.7; font-size: 11px; }

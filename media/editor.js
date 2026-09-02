@@ -37,6 +37,7 @@
     let notices = [];                // {id, level, text, action}
     let detailKey = null;
     let draftNew = false; // true while creating a brand-new key in the detail pane
+    let showNewlineEscape = true; // grid shows real newlines escaped when on
 
     // ---------------------------------------------------------------- dom
     const $ = (id) => document.getElementById(id);
@@ -74,6 +75,10 @@
         missing: { zh: '缺', en: 'miss' },
         placeholder: { zh: '占位符', en: 'ph' },
         existing: { zh: '已存在，已定位', en: 'exists, jumped' },
+        mCut: { zh: '剪切', en: 'Cut' },
+        mCopy: { zh: '复制', en: 'Copy' },
+        mPaste: { zh: '粘贴', en: 'Paste' },
+        mSelAll: { zh: '全选', en: 'Select all' },
 
         // toolbar
         uiUndo: { zh: '↩', en: '↩' },
@@ -364,7 +369,13 @@
         if (!value) {
             return;
         }
-        const text = String(value).replace(/\r?\n/g, '\\n');
+        let display = String(value);
+        if (showNewlineEscape) {
+            const nl = String.fromCharCode(10);
+            const esc = String.fromCharCode(92) + 'n';
+            display = display.split(String.fromCharCode(13)).join('').split(nl).join(esc);
+        }
+        const text = display;
         const re = new RegExp(TOKEN_RE.source, 'gi');
         let last = 0;
         let m;
@@ -1887,6 +1898,25 @@
             case 'uiConfig':
                 applyUiConfig(msg);
                 break;
+            case 'clipboard': {
+                if (pendingPasteInfo && typeof msg.text === 'string') {
+                    const t0 = pendingPasteInfo.t;
+                    pendingPasteInfo = null;
+                    if (t0 && t0.isConnected && (t0.tagName === 'INPUT' || t0.tagName === 'TEXTAREA')) {
+                        const s0 = t0.selectionStart != null ? t0.selectionStart : t0.value.length;
+                        const e0 = t0.selectionEnd != null ? t0.selectionEnd : s0;
+                        t0.value = t0.value.slice(0, s0) + msg.text + t0.value.slice(e0);
+                        const pos = s0 + msg.text.length;
+                        try {
+                            t0.setSelectionRange(pos, pos);
+                        } catch {
+                            // ignore
+                        }
+                        t0.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
+                break;
+            }
             case 'config':
                 if (msg.confirmDelete !== undefined) {
                     confirmDelete = !!msg.confirmDelete;
@@ -1894,6 +1924,10 @@
                 if (msg.detailDock) {
                     detailDock = msg.detailDock;
                     applyDockLayout();
+                }
+                if (msg.newlineEscape !== undefined) {
+                    showNewlineEscape = !!msg.newlineEscape;
+                    refreshRows();
                 }
                 break;
             case 'layoutCfg': {
@@ -1935,8 +1969,12 @@
                 }
                 break;
             }
-            case 'ctxCmd': {
-                contextAction(msg.cmd);
+            case 'cmdUndo': {
+                performUndoRedo(false);
+                break;
+            }
+            case 'cmdRedo': {
+                performUndoRedo(true);
                 break;
             }
             case 'cmdAddKey': {
@@ -1977,6 +2015,8 @@
 
     // ---- native context-menu state (commands come back from the host) ----
     let ctxRow = { key: null, code: null };
+    let ctxField = null; // the input/textarea the context menu was opened on
+    let pendingPasteInfo = null; // { t } while a clipboard read is in flight
     function entryText(key) {
         const lines = [];
         for (const lang of data.langs) {
@@ -1999,6 +2039,79 @@
             removeKeys([key]);
         }
         ctxRow = { key: null, code: null };
+    }
+
+    // ---- unicode encode/decode for the detail editor buttons ----
+    // Encoding escapes NON-ASCII characters (such as the section sign or CJK)
+    // as uXXXX sequences; ASCII letters, digits and symbols are kept as-is.
+    function unicodeEscapeText(text) {
+        const bs = String.fromCharCode(92);
+        let out = '';
+        for (let i = 0; i < text.length; i++) {
+            const c = text.charCodeAt(i);
+            if (c > 0x7e) {
+                out += bs + 'u' + c.toString(16).toUpperCase().padStart(4, '0');
+            } else {
+                out += text[i];
+            }
+        }
+        return out;
+    }
+    function unicodeDecodeText(text) {
+        const bs = String.fromCharCode(92);
+        return String(text).replace(
+            new RegExp(bs + bs + 'u([0-9a-fA-F]{4})', 'g'),
+            (m, h) => String.fromCharCode(parseInt(h, 16))
+        );
+    }
+    function unicodeTargetTextarea() {
+        const active = document.activeElement;
+        if (active && active.tagName === 'TEXTAREA' && active.dataset.code && active.closest('#detail')) {
+            return active;
+        }
+        const code = primary || (data.langs[0] && data.langs[0].code);
+        return code && els.detailRows
+            ? els.detailRows.querySelector('textarea[data-code="' + CSS.escape(code) + '"]')
+            : null;
+    }
+    function applyUnicodeToText(mode) {
+        if (!detailKey) {
+            return;
+        }
+        const ta = unicodeTargetTextarea();
+        if (!ta || !ta.dataset.code) {
+            return;
+        }
+        const code = ta.dataset.code;
+        const v = mode === 'decode' ? unicodeDecodeText(ta.value) : unicodeEscapeText(ta.value);
+        cancelCellPending(detailKey, code);
+        ta.value = v;
+        ta.classList.toggle('empty', v === '');
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        updatePlaceholderWarn(detailKey);
+    }
+
+    // Central undo/redo used by both the contributed keybindings and the
+    // in-webview fallback. While a text field is focused it only touches that
+    // field's own edits; otherwise it drives the model undo/redo (silently
+    // ignoring requests when there is nothing to undo/redo).
+    function performUndoRedo(isRedo) {
+        const t = document.activeElement;
+        const field = (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) ? t : null;
+        if (field) {
+            const fu = field.fieldUndo;
+            if (fu) {
+                if (isRedo ? fu.redo() : fu.undo()) {
+                    // handled at field level
+                }
+            }
+            return;
+        }
+        if (isRedo ? !canRedo : !canUndo) {
+            return;
+        }
+        flushPending();
+        post({ type: isRedo ? 'redo' : 'undo' });
     }
 
     function updateStats() {
@@ -2274,27 +2387,7 @@
                 const isRedoKey = ev.key === 'y' || ev.key === 'Y';
                 if (isUndoKey || isRedoKey) {
                     ev.preventDefault();
-                    const isRedo = ev.shiftKey || isRedoKey;
-                    const field = (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) ? t : null;
-                    if (field) {
-                        // While editing: only the field's own undo/redo runs — and
-                        // never a table-level op, never any toast, even when the
-                        // field has nothing left to undo/redo.
-                        const fu = field.fieldUndo;
-                        if (fu) {
-                            if (isRedo ? fu.redo() : fu.undo()) {
-                                // handled at field level
-                            }
-                        }
-                        return;
-                    }
-                    // Outside a field: table-level undo/redo, silently ignored when
-                    // there is nothing to undo/redo (no "nothing to undo" toast).
-                    if (isRedo ? !canRedo : !canUndo) {
-                        return;
-                    }
-                    flushPending();
-                    post({ type: isRedo ? 'redo' : 'undo' });
+                    performUndoRedo(ev.shiftKey || isRedoKey);
                     return;
                 }
             }
@@ -2361,11 +2454,21 @@
             dockGroup.appendChild(b);
         }
         els.dockBtnGroup = dockGroup;
+        // Encode / decode unicode escapes in the focused/primary language editor.
+        const uGroup = document.createElement('div');
+        uGroup.className = 'dock-btn-group';
+        const btnUEncode = mkBtn('A→U', '', '转码：非 ASCII 转为 uXXXX（英文与 ASCII 符号不变）');
+        const btnUDecode = mkBtn('U→A', '', '解码：uXXXX 还原为字符');
+        btnUEncode.addEventListener('click', () => applyUnicodeToText('encode'));
+        btnUDecode.addEventListener('click', () => applyUnicodeToText('decode'));
+        uGroup.append(btnUEncode, btnUDecode);
         const closeBtn = head.querySelector('#btnCloseDetail');
         if (closeBtn) {
             head.insertBefore(dockGroup, closeBtn);
+            head.insertBefore(uGroup, dockGroup);
         } else {
             head.appendChild(dockGroup);
+            head.appendChild(uGroup);
         }
         syncUndockButtons();
 
@@ -2427,66 +2530,148 @@
         els.dockDivider.addEventListener('pointercancel', dockEnd);
         applyDockLayout();
 
-        // ---- native VS Code context menu (via webview/context menus) ----
-        // VS Code itself renders the menu for the section the element belongs to
-        // (data-vscode-context). Here we only remember which row/language was
-        // right-clicked; the chosen command comes back as {type:'ctxCmd'}.
-        els.rowSpacer.addEventListener('contextmenu', (ev) => {
-            const row = ev.target.closest('.grid-row');
-            if (!row) {
-                return;
-            }
-            const cell = ev.target.closest('.cell');
-            ctxRow = {
-                key: row.dataset.key || null,
-                code: cell && cell.dataset.code ? cell.dataset.code : null
-            };
-        });
+        // ---- custom right-click context menu (rows + text fields) ----
+        // VS Code's native webview menus are unreliable in some setups, so we
+        // render our own stable menu. Rows get copy/delete actions; text fields
+        // get cut/copy/paste/select-all (clipboard reads go through the host).
+        const ctxMenuEl = document.createElement('div');
+        ctxMenuEl.className = 'ctx-menu hidden';
+        document.body.appendChild(ctxMenuEl);
 
-        // Keep focus/caret inside a text field after the native menu closes.
+        const hideCtxMenu = () => {
+            ctxMenuEl.classList.add('hidden');
+            ctxMenuEl.textContent = '';
+        };
+        const showCtxMenu = (x, y, items) => {
+            ctxMenuEl.textContent = '';
+            for (const it of items) {
+                if (it === '-') {
+                    const sep = document.createElement('div');
+                    sep.className = 'ctx-sep';
+                    ctxMenuEl.appendChild(sep);
+                    continue;
+                }
+                const el = document.createElement('div');
+                el.className = 'ctx-item' + (it.danger ? ' danger' : '');
+                const l = document.createElement('span');
+                l.className = 'l';
+                l.textContent = it.label;
+                el.appendChild(l);
+                if (it.hint) {
+                    const h = document.createElement('span');
+                    h.className = 'hint';
+                    h.textContent = it.hint;
+                    el.appendChild(h);
+                }
+                el.addEventListener('mousedown', (ev) => ev.preventDefault());
+                el.addEventListener('click', () => {
+                    hideCtxMenu();
+                    it.run();
+                });
+                ctxMenuEl.appendChild(el);
+            }
+            const w = ctxMenuEl.offsetWidth || 230;
+            const h = ctxMenuEl.offsetHeight || 140;
+            ctxMenuEl.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + 'px';
+            ctxMenuEl.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + 'px';
+            ctxMenuEl.classList.remove('hidden');
+        };
+        document.addEventListener('pointerdown', (ev) => {
+            if (!ctxMenuEl.classList.contains('hidden') && !ctxMenuEl.contains(ev.target)) {
+                hideCtxMenu();
+            }
+        });
+        document.addEventListener('scroll', hideCtxMenu, true);
+        window.addEventListener('resize', hideCtxMenu);
+
+        // Text-field editing actions.
+        const fieldMenuItems = () => {
+            const exec = (cmd) => {
+                const t = ctxField;
+                if (!t || !t.isConnected || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) {
+                    return;
+                }
+                t.focus();
+                if (cmd === 'cut') {
+                    document.execCommand('cut');
+                } else if (cmd === 'copy') {
+                    document.execCommand('copy');
+                } else if (cmd === 'select') {
+                    t.select();
+                }
+            };
+            const paste = () => {
+                const t = ctxField;
+                if (!t || !t.isConnected || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) {
+                    return;
+                }
+                t.focus();
+                pendingPasteInfo = { t };
+                post({ type: 'readClipboard' });
+            };
+            const items = [];
+            items.push({ label: t('mCut'), run: () => exec('cut') });
+            items.push({ label: t('mCopy'), run: () => exec('copy') });
+            items.push({ label: t('mPaste'), run: paste });
+            items.push({ label: t('mSelAll'), run: () => exec('select') });
+            return items;
+        };
+        // Paste result arrives back from the host.
+
+        const rowMenuItems = (row, cell) => {
+            const key = row.dataset.key || '';
+            const code = cell && cell.dataset.code ? cell.dataset.code : null;
+            ctxRow = { key, code };
+            const items = [];
+            items.push({
+                label: t('ctxCopyKey'),
+                run: () => contextAction('copyKey')
+            });
+            if (code) {
+                items.push({
+                    label: t('ctxCopyVal', { c: code }),
+                    run: () => contextAction('copyValue')
+                });
+            }
+            items.push({ label: t('ctxCopyRow'), run: () => contextAction('copyEntry') });
+            items.push('-');
+            items.push({
+                label: selected.size > 1
+                    ? t('ctxDeleteSel', { n: selected.size })
+                    : t('ctxDelete'),
+                danger: true,
+                run: () => (selected.size > 1 ? removeKeys([...selected]) : removeKeys([key]))
+            });
+            return items;
+        };
+
         document.addEventListener('contextmenu', (ev) => {
             const t = ev.target;
-            if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) {
-                return;
+            const editing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+            const row = t && t.closest ? t.closest('.grid-row') : null;
+            if (!editing && !row) {
+                return; // keep the default menu elsewhere
             }
-            const st = t.selectionStart != null ? t.selectionStart : t.value.length;
-            const en = t.selectionEnd != null ? t.selectionEnd : st;
-            const start = Date.now();
-            let done = false;
-            const cancel = () => {
-                done = true;
-                window.clearInterval(iv);
-                window.removeEventListener('pointerdown', cancel, true);
-                window.removeEventListener('keydown', cancel, true);
-            };
-            window.addEventListener('pointerdown', cancel, true);
-            window.addEventListener('keydown', cancel, true);
-            const iv = window.setInterval(() => {
-                if (done) {
+            ev.preventDefault();
+            if (editing) {
+                ctxRow = { key: null, code: null };
+                ctxField = t;
+                showCtxMenu(ev.clientX, ev.clientY, fieldMenuItems());
+            } else {
+                if (!row.dataset.key) {
                     return;
                 }
-                if (Date.now() - start > 1000) {
-                    cancel();
-                    return;
-                }
-                const a = document.activeElement;
-                if (a && a !== t && a !== document.body) {
-                    cancel(); // user moved somewhere else
-                    return;
-                }
-                if (a === document.body && t.isConnected) {
-                    t.focus();
-                    try {
-                        t.setSelectionRange(st, en);
-                    } catch {
-                        // ignore
-                    }
-                    cancel();
-                }
-            }, 40);
+                ctxField = null;
+                showCtxMenu(ev.clientX, ev.clientY, rowMenuItems(row, t.closest('.cell')));
+            }
         }, true);
-    }
 
+        window.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape' && !ctxMenuEl.classList.contains('hidden')) {
+                hideCtxMenu();
+            }
+        });
+    }
     // ---------------------------------------------------------------- boot
     document.addEventListener('DOMContentLoaded', () => {
         const saved = vscode.getState() || {};

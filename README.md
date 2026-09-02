@@ -11,9 +11,9 @@ A VS Code extension that gives Minecraft (datapack / resourcepack / mod) languag
 - **Side-by-side grid**: rows = translation keys, columns = sibling language files (`en_us.json`, `zh_cn.json`, `ja_jp.json`, …). Click any cell to edit; empty cells are marked as missing.
 - **Registered as an editor (Open With…)**: opening a language file always keeps VS Code's default JSON editor — nothing is intercepted. Pick the GUI explicitly whenever you want it.
 - **Language chips** toggle columns and show per-language completion (e.g. `en_us 42/50`).
-- **Detail panel** (click a row): compares the key across all languages with multi-line inputs; the **key itself is editable right there** (rename syncs to every language file, `Enter` commits / `Esc` reverts). The panel can be **docked at the bottom, left or right, or maximized fullscreen** (drag the divider to resize; choice is remembered).
+- **Detail panel** (click a row): compares the key across all languages with multi-line inputs; the **key itself is editable right there** (rename syncs to every language file, `Enter` commits / `Esc` reverts). The panel can be **docked at the bottom, left or right, or maximized fullscreen** (drag the divider to resize; choice is remembered). **A→U / U→A buttons** encode/decode Unicode escapes (`\u00a7`, CJK → `\uXXXX`) in the focused/current translation — ASCII letters and symbols are kept untouched.
 - **Row navigation**: inside the detail panel use `Ctrl+↑`/`Ctrl+↓` (or the ↑/↓ buttons) to jump between the previous/next entries of the current list; `Ctrl+Shift+G` jumps straight to a specific translation key.
-- **Right-click a table row** opens VS Code's **native context menu** (copy key / translation / entry, delete) — focus and caret inside text fields are preserved after the menu closes.
+- **Right-click** a table row opens a stable in-app menu (copy key / translation / entry, delete); inside a text editor it offers cut / copy / paste / select-all (paste reads the system clipboard through the host). No focus loss or menu flicker.
 - **Add / delete / rename keys** across all files at once — undoable. “＋ Add” opens the detail panel as a draft: type the new key and press `Enter` (key/value editing continues in the same place, in all languages).
 - **Undo / Redo**: toolbar buttons and `Ctrl+Z` / `Ctrl+Y` / `Ctrl+Shift+Z` (100-step in-session stack; every edit auto-saves).
 - **Filter** (keys or any translation text), **only-missing** toggle, column sorting (click the key header for alphabetical order, click a language header to sort by its translations; click again to reverse).
@@ -67,6 +67,9 @@ The *new-key* shortcut only reacts while focus is in the grid or the key field �
 | `fontFamily` | `null` | Font family for all editing text; `null` follows `editor.fontFamily` |
 | `undoLimit` | `100` | Undo history steps (in-session) |
 | `indentSize` | `2` | Spaces used on write when the original indentation cannot be detected (`0` = single line) |
+| `escapeNonAsciiOnWrite` | `false` | Escape non-ASCII characters (e.g. `§`, CJK) as `\uXXXX` when saving; ASCII letters/symbols stay as-is |
+| `preserveUnicodeEscapes` | `true` | If the original file already used `\uXXXX` escapes (e.g. `\u00A7`), keep that escape style when saving; turn it off to convert such escapes into real characters |
+| `showNewlineAsEscape` | `true` | Show real newlines in grid cells as `\n` (off = wrap them) |
 
 ## How it works
 

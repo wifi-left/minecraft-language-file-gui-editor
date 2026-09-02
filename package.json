@@ -2,7 +2,7 @@
   "name": "minecraft-language-file-gui-editor",
   "displayName": "Minecraft Language File GUI Editor",
   "description": "GUI editor for Minecraft language files (en_us.json / zh_cn.json / ...): multi-language grid, add/delete keys across all files, undo/redo.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "wifi-left",
   "license": "MIT",
   "engines": {
@@ -27,28 +27,18 @@
         "category": "Minecraft Lang"
       },
       {
-        "command": "minecraftLanguageEditor.copyKey",
-        "title": "Copy key",
-        "category": "Minecraft Lang"
-      },
-      {
-        "command": "minecraftLanguageEditor.copyValue",
-        "title": "Copy translation",
-        "category": "Minecraft Lang"
-      },
-      {
-        "command": "minecraftLanguageEditor.copyEntry",
-        "title": "Copy entry (all languages)",
-        "category": "Minecraft Lang"
-      },
-      {
-        "command": "minecraftLanguageEditor.deleteContextKey",
-        "title": "Delete key",
-        "category": "Minecraft Lang"
-      },
-      {
         "command": "minecraftLanguageEditor.addKeyShortcut",
         "title": "Add a new key",
+        "category": "Minecraft Lang"
+      },
+      {
+        "command": "minecraftLanguageEditor.undoKeys",
+        "title": "Undo",
+        "category": "Minecraft Lang"
+      },
+      {
+        "command": "minecraftLanguageEditor.redoKeys",
+        "title": "Redo",
         "category": "Minecraft Lang"
       }
     ],
@@ -56,12 +46,27 @@
       {
         "command": "minecraftLanguageEditor.addKeyShortcut",
         "key": "ctrl+enter",
-        "when": "webview == 'minecraftLanguageEditor.gridEditor'"
+        "when": "activeCustomEditorId == 'minecraftLanguageEditor.gridEditor'"
       },
       {
         "command": "minecraftLanguageEditor.addKeyShortcut",
         "key": "ctrl+shift+enter",
-        "when": "webview == 'minecraftLanguageEditor.gridEditor'"
+        "when": "activeCustomEditorId == 'minecraftLanguageEditor.gridEditor'"
+      },
+      {
+        "command": "minecraftLanguageEditor.undoKeys",
+        "key": "ctrl+z",
+        "when": "activeCustomEditorId == 'minecraftLanguageEditor.gridEditor'"
+      },
+      {
+        "command": "minecraftLanguageEditor.redoKeys",
+        "key": "ctrl+shift+z",
+        "when": "activeCustomEditorId == 'minecraftLanguageEditor.gridEditor'"
+      },
+      {
+        "command": "minecraftLanguageEditor.redoKeys",
+        "key": "ctrl+y",
+        "when": "activeCustomEditorId == 'minecraftLanguageEditor.gridEditor'"
       }
     ],
     "menus": {
@@ -70,28 +75,6 @@
           "command": "minecraftLanguageEditor.openEditor",
           "when": "resourceExtname == .json && resourceScheme == file",
           "group": "navigation@50"
-        }
-      ],
-      "webview/context": [
-        {
-          "command": "minecraftLanguageEditor.copyKey",
-          "when": "webview == 'minecraftLanguageEditor.gridEditor' && (webviewSection == 'gridRow' || webviewSection == 'gridValue')",
-          "group": "1_copy@1"
-        },
-        {
-          "command": "minecraftLanguageEditor.copyValue",
-          "when": "webview == 'minecraftLanguageEditor.gridEditor' && webviewSection == 'gridValue'",
-          "group": "1_copy@2"
-        },
-        {
-          "command": "minecraftLanguageEditor.copyEntry",
-          "when": "webview == 'minecraftLanguageEditor.gridEditor' && (webviewSection == 'gridRow' || webviewSection == 'gridValue')",
-          "group": "1_copy@3"
-        },
-        {
-          "command": "minecraftLanguageEditor.deleteContextKey",
-          "when": "webview == 'minecraftLanguageEditor.gridEditor' && (webviewSection == 'gridRow' || webviewSection == 'gridValue')",
-          "group": "9_delete@1"
         }
       ]
     },
@@ -282,7 +265,12 @@
         },
         "minecraftLanguageEditor.detailDock": {
           "type": "string",
-          "enum": ["bottom", "left", "right", "full"],
+          "enum": [
+            "bottom",
+            "left",
+            "right",
+            "full"
+          ],
           "enumDescriptions": [
             "停靠到编辑器底部",
             "停靠到左侧（与表格并排）",
@@ -309,6 +297,21 @@
           ],
           "default": null,
           "markdownDescription": "GUI 中所有编辑文本的字体族。留空（null）时跟随 VS Code `editor.fontFamily`。"
+        },
+        "minecraftLanguageEditor.escapeNonAsciiOnWrite": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "写回语言文件时把非 ASCII 字符（如 `§`、中文）转义为 `\\uXXXX`（英文字母与 ASCII 符号保持不变）。关闭则原样写入真实字符。"
+        },
+        "minecraftLanguageEditor.preserveUnicodeEscapes": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "若原始语言文件已使用 `\\uXXXX` 转义（如 `\\u00A7`），写回时保留这些转义风格（仅维持原文件中用过的转义字符）。关闭则把这类转义转换为真实字符。开启时不受 `escapeNonAsciiOnWrite` 之外的额外影响。"
+        },
+        "minecraftLanguageEditor.showNewlineAsEscape": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "表格单元格把译文中的真实换行显示为 `\\n`；关闭时直接折行显示。"
         },
         "minecraftLanguageEditor.undoLimit": {
           "type": "number",

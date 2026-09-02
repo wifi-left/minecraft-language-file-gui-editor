@@ -84,12 +84,24 @@ function buildState(entries) {
             continue;
         }
         state.langs.push(code);
+        // Remember which characters were originally written as \uXXXX escapes
+        // so they can be preserved on write (instead of silently converting the
+        // file's escape style to real characters).
+        const escSet = new Set();
+        const escRe = /\\u([0-9a-fA-F]{4})/g;
+        let escM;
+        const rawText = String(entry.text).replace(/^\uFEFF/, '');
+        while ((escM = escRe.exec(rawText)) !== null) {
+            escSet.add(parseInt(escM[1], 16));
+        }
         state.files[code] = {
             name: entry.name,
             indent: analysis.indent,
             bom: analysis.bom,
             crlf: analysis.crlf,
-            trailingNewline: analysis.trailingNewline
+            trailingNewline: analysis.trailingNewline,
+            usedUnicodeEscapes: escSet.size > 0,
+            escapePoints: escSet
         };
         const order = [];
         const value = analysis.value || {};
@@ -211,11 +223,46 @@ function applyOp(state, op) {
 }
 
 /**
+ * Escape every non-ASCII character (code > 0x7e) as \uXXXX. ASCII letters,
+ * digits and symbols are left untouched (surrogates are escaped as pairs).
+ */
+function escapeNonAscii(text) {
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+        const c = text.charCodeAt(i);
+        if (c > 0x7e) {
+            out += '\\u' + c.toString(16).toUpperCase().padStart(4, '0');
+        } else {
+            out += text[i];
+        }
+    }
+    return out;
+}
+
+/**
+ * Escape only the code points that the original file had written as \uXXXX
+ * (so § stays \u00A7 while previously-real characters like 中文 stay real).
+ */
+function escapeBySet(text, codePoints) {
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+        const c = text.charCodeAt(i);
+        if (c > 0x7e && codePoints.has(c)) {
+            out += '\\u' + c.toString(16).toUpperCase().padStart(4, '0');
+        } else {
+            out += text[i];
+        }
+    }
+    return out;
+}
+
+/**
  * Serialize one language file back to text, preserving per-file key order:
  * keys the file originally declared (in that order), then union keys it is missing
  * appended in canonical order (empty values => "" placeholders).
+ * @param {object} [opts] { escapeNonAscii?: boolean, preserveEscapes?: boolean }
  */
-function serializeFile(state, code, defaultIndent) {
+function serializeFile(state, code, defaultIndent, opts) {
     const file = state.files[code];
     if (!file || state.broken.some((b) => b.code === code)) {
         return null;
@@ -237,6 +284,13 @@ function serializeFile(state, code, defaultIndent) {
     if (json === undefined) {
         json = '{}';
     }
+    if (opts && opts.escapeNonAscii) {
+        // Non-ASCII only ever appears inside string literals, so escaping the
+        // whole serialized text is safe. (CRLF handled afterwards.)
+        json = escapeNonAscii(json);
+    } else if (opts && opts.preserveEscapes && file.usedUnicodeEscapes && file.escapePoints) {
+        json = escapeBySet(json, file.escapePoints);
+    }
     if (file.crlf) {
         json = json.replace(/\n/g, '\r\n');
     }
@@ -250,10 +304,10 @@ function serializeFile(state, code, defaultIndent) {
  * Serialize every editable file.
  * @returns {Object<string,string>} code -> text
  */
-function serializeAll(state, defaultIndent) {
+function serializeAll(state, defaultIndent, opts) {
     const out = {};
     for (const code of state.langs) {
-        out[code] = serializeFile(state, code, defaultIndent);
+        out[code] = serializeFile(state, code, defaultIndent, opts);
     }
     return out;
 }
@@ -282,5 +336,6 @@ module.exports = {
     getValue,
     serializeFile,
     serializeAll,
-    stats
+    stats,
+    escapeNonAscii
 };

@@ -104,7 +104,8 @@ class EditorPanel {
                     pushUi();
                 }
                 if (e.affectsConfiguration('minecraftLanguageEditor.confirmDelete') ||
-                    e.affectsConfiguration('minecraftLanguageEditor.detailDock')) {
+                    e.affectsConfiguration('minecraftLanguageEditor.detailDock') ||
+                    e.affectsConfiguration('minecraftLanguageEditor.showNewlineAsEscape')) {
                     pushCfg();
                 }
             })
@@ -131,7 +132,8 @@ class EditorPanel {
         return {
             type: 'config',
             confirmDelete: c.get('confirmDelete', true),
-            detailDock: c.get('detailDock', 'bottom')
+            detailDock: c.get('detailDock', 'bottom'),
+            newlineEscape: c.get('showNewlineAsEscape', true)
         };
     }
 
@@ -198,6 +200,11 @@ class EditorPanel {
                     vscode.env.clipboard.writeText(msg.text);
                 }
                 break;
+            case 'readClipboard': {
+                const txt = await vscode.env.clipboard.readText();
+                this._post({ type: 'clipboard', text: txt });
+                break;
+            }
             case 'setConfirmDelete': {
                 const cfg = vscode.workspace.getConfiguration('minecraftLanguageEditor');
                 await cfg.update('confirmDelete', !!msg.value, vscode.ConfigurationTarget.Global);

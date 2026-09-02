@@ -333,7 +333,13 @@ class FolderModel {
     }
 
     _serializeMap() {
-        return langSet.serializeAll(this._state, this.indent);
+        const cfg = vscode.workspace.getConfiguration('minecraftLanguageEditor');
+        const escape = !!cfg.get('escapeNonAsciiOnWrite', false);
+        const preserve = !!cfg.get('preserveUnicodeEscapes', true);
+        return langSet.serializeAll(this._state, this.indent, {
+            escapeNonAscii: escape,
+            preserveEscapes: preserve
+        });
     }
 
     _isInternalNow(fsPathKey) {

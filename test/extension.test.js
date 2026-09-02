@@ -203,4 +203,25 @@ describe('langSet', () => {
         assert.strictEqual(s.perLang.zh_cn.missing, 1);
         assert.strictEqual(s.perLang.en_us.missing, 0);
     });
+
+    it('escapeNonAscii escapes only non-ASCII; serialize option writes uXXXX', () => {
+        // ASCII letters/digits/symbols untouched, § / CJK escaped.
+        assert.strictEqual(langSet.escapeNonAscii('a1! §中'), 'a1! \\u00A7\\u4E2D');
+        const st = langSet.buildState([{ code: 'zh_cn', name: 'zh_cn.json', text: '{ "k": "颜色 § 甲" }' }]);
+        const esc = langSet.serializeFile(st, 'zh_cn', '  ', { escapeNonAscii: true });
+        assert.ok(esc.includes('\\u989C\\u8272 \\u00A7 \\u7532'), esc);
+        const raw = langSet.serializeFile(st, 'zh_cn', '  ', {});
+        assert.ok(raw.includes('颜色 § 甲'), raw);
+    });
+
+    it('preserveUnicodeEscapes keeps original escape style (choose convert or not)', () => {
+        const bs = String.fromCharCode(92);
+        const raw = '{"k": "红灯 ' + bs + 'u00A7 停"}';
+        const st = langSet.buildState([{ code: 'zh_cn', name: 'zh_cn.json', text: raw }]);
+        const keep = langSet.serializeFile(st, 'zh_cn', '  ', { preserveEscapes: true });
+        assert.ok(keep.includes('红灯 ' + bs + 'u00A7 停'), keep);
+        assert.ok(!keep.includes('§'), keep);
+        const conv = langSet.serializeFile(st, 'zh_cn', '  ', {});
+        assert.ok(conv.includes('红灯 § 停'), conv);
+    });
 });
