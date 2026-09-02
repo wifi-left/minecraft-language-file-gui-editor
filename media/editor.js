@@ -22,7 +22,7 @@
     let confirmDelete = true;
     let locale = 'zh';
     let visibleLangs = [];           // codes whose columns are shown
-    let sort = { code: null, dir: 1 }; // code === null => canonical order
+    let sort = { kind: 'none', code: null, dir: 1 }; // none | key | lang
     let filterText = '';
     let onlyMissing = false;
     const selected = new Set();
@@ -36,6 +36,7 @@
     let activeInline = null;         // {cell, key, code, isKey, input, baseValue}
     let notices = [];                // {id, level, text, action}
     let detailKey = null;
+    let draftNew = false; // true while creating a brand-new key in the detail pane
 
     // ---------------------------------------------------------------- dom
     const $ = (id) => document.getElementById(id);
@@ -51,6 +52,7 @@
         addBar: $('addBar'), addKey: $('addKeyInput'), addValue: $('addValueInput'),
         addOk: $('addOk'), addCancel: $('addCancel'), addLang: $('addLangSelect'),
         headRow: $('headRow'),
+        gridWrap: $('gridWrap'),
         bodyScroll: $('bodyScroll'), rowSpacer: $('rowSpacer'),
         emptyState: $('emptyState'),
         detail: $('detail'), detailRows: $('detailRows'),
@@ -61,28 +63,103 @@
     let checkAllInput = null; // re-created with each header render
 
     const I18N = {
-        reload: { zh: '重新加载', en: 'Reload' },
-        detailTitle: { zh: '详情 —— 修改会自动保存到各语言文件', en: 'Details — edits auto-save to each file' },
-        noRows: { zh: '没有匹配的 key', en: 'No matching keys' },
-        noKeysHint: {
-            zh: '该目录没有可编辑的翻译 key。点击右上角 “＋ 添加 key” 创建第一个翻译。',
-            en: 'No editable translation keys yet. Use "+ Add key" to create one.'
-        },
-        brokenOnly: { zh: '没有可用的语言文件（全部解析失败或被跳过）。请先修复原始 JSON 文件。', en: 'No usable language files (all failed to parse). Fix the raw JSON first.' },
-        copied: { zh: '已复制 key', en: 'Key copied' },
+        reload: { zh: '重载', en: 'Reload' },
+        detailTitle: { zh: '详情', en: 'Details' },
+        noRows: { zh: '无匹配 key', en: 'No matching keys' },
+        noKeysHint: { zh: '暂无翻译 key，点“＋ 添加”创建', en: 'No keys yet — use “＋ Add”' },
+        brokenOnly: { zh: '无可用的语言文件，请修复原始 JSON', en: 'No usable files — fix the JSON first' },
+        copied: { zh: '已复制', en: 'Copied' },
         prefix: { zh: '前缀', en: 'prefix' },
-        complete: { zh: '完整', en: 'complete' },
-        missing: { zh: '缺', en: 'missing' },
-        placeholder: { zh: '占位符', en: 'placeholder' },
-        existing: { zh: '已定位到该 key', en: 'Key exists — jumping to it' }
+        complete: { zh: '完整', en: 'ok' },
+        missing: { zh: '缺', en: 'miss' },
+        placeholder: { zh: '占位符', en: 'ph' },
+        existing: { zh: '已存在，已定位', en: 'exists, jumped' },
+
+        // toolbar
+        uiUndo: { zh: '↩', en: '↩' },
+        uiRedo: { zh: '↪', en: '↪' },
+        uiAdd: { zh: '＋ 添加', en: '＋ Add' },
+        uiDelete: { zh: '🗑', en: '🗑' },
+        uiReloadTitle: { zh: '从磁盘重载', en: 'Reload from disk' },
+        uiUndoTitle: { zh: '撤销 (Ctrl+Z)', en: 'Undo (Ctrl+Z)' },
+        uiRedoTitle: { zh: '重做 (Ctrl+Y)', en: 'Redo (Ctrl+Y)' },
+        uiAddTitle: { zh: '新增翻译 key（写入所有语言）', en: 'New key (all languages)' },
+        uiDeleteTitle: { zh: '删除所选（所有语言）', en: 'Delete selected' },
+        uiFilterPh: { zh: '筛 key / 译文  (/)', en: 'Filter keys / text  (/)' },
+        uiOnlyMissing: { zh: '仅未译', en: 'missing' },
+        uiAddKeyPh: { zh: 'key，如 item.minecraft.x', en: 'key e.g. item.minecraft.x' },
+        uiAddValPh: { zh: '译文（其它语言留空）', en: 'value (others stay empty)' },
+        uiLang: { zh: '语言', en: 'Lang' },
+        uiCancel: { zh: '取消', en: 'Cancel' },
+        uiOkAdd: { zh: '添加', en: 'Add' },
+        uiCur: { zh: '当前', en: 'Open' },
+        uiAutoSave: { zh: '自动保存', en: 'auto-saved' },
+
+        // dock / nav
+        dockBottomT: { zh: '停靠底部', en: 'Dock bottom' },
+        dockLeftT: { zh: '停靠左侧', en: 'Dock left' },
+        dockRightT: { zh: '停靠右侧', en: 'Dock right' },
+        dockFullT: { zh: '全屏', en: 'Fullscreen' },
+        navPrevT: { zh: '上一条 (Ctrl+↑)', en: 'Prev (Ctrl+↑)' },
+        navNextT: { zh: '下一条 (Ctrl+↓)', en: 'Next (Ctrl+↓)' },
+        navJumpT: { zh: '跳转 key', en: 'Jump to key' },
+        keyHint: { zh: 'Enter 提交', en: 'Enter to rename' },
+        divBottomTitle: { zh: '拖调高度', en: 'Drag height' },
+        divSideTitle: { zh: '拖调宽度', en: 'Drag width' },
+        divBottomTitle2: { zh: '拖动调整详情面板高度', en: 'Drag to resize height' },
+        divSideTitle2: { zh: '拖动调整详情面板宽度', en: 'Drag to resize width' },
+
+        // context menu
+        ctxCopyKey: { zh: '复制 key', en: 'Copy key' },
+        ctxCopyVal: { zh: '复制译文 ({c})', en: 'Copy value ({c})' },
+        ctxCopyRow: { zh: '复制条目（全部语言）', en: 'Copy entry (all)' },
+        ctxDelete: { zh: '删除此 key', en: 'Delete key' },
+        ctxDeleteSel: { zh: '删除所选 ({n})', en: 'Delete {n} rows' },
+
+        // modal
+        mOk: { zh: '确定', en: 'OK' },
+        mCancel: { zh: '取消', en: 'Cancel' },
+        mDelOk: { zh: '删除', en: 'Delete' },
+        mDoNotAsk: { zh: '此后不再提醒', en: "Don't ask again" },
+        mDoNotAskHint: { zh: '此后不再提醒（设置中可重开）', en: "Don't ask again (re-enable in settings)" },
+        delConfirm: { zh: '从 {l} 个语言文件删除 {n} 个 key？{list}可撤销 (Ctrl+Z)', en: 'Delete {n} keys from {l} files?{list}Undoable (Ctrl+Z)' },
+        reloadConfirm: { zh: '从磁盘重载？\n未保存修改会丢失，撤销历史清空', en: 'Reload from disk?\nUnsaved edits & undo history are lost' },
+        jumpPrompt: { zh: '跳转 key（支持部分匹配）:', en: 'Jump to key (partial ok):' },
+        jumpPh: { zh: '如 item.minecraft.diamond', en: 'e.g. item.minecraft.diamond' },
+        jumpNone: { zh: '无此 key', en: 'Key not found' },
+        keyEmptyWarn: { zh: 'key 不能为空', en: 'Key is empty' },
+        keyExistsWarn: { zh: 'key 已存在', en: 'Key exists' },
+        langOneWarn: { zh: '至少保留一列', en: 'Keep ≥1 column' },
+        plWarn: { zh: '⚠ 占位符不一致: {c}', en: '⚠ placeholders differ: {c}' },
+        plWarnTitle: { zh: '各语言 %s/%d 占位符不一致，游戏内可能出错', en: 'Placeholders differ across languages' },
+        uiKeyTitle: { zh: '回车提交重命名（全文件同步）', en: 'Rename, Enter to commit' },
+        missingCell: { zh: '〔未翻译〕', en: '(missing)' },
+        stFmt: { zh: '{t} key · {l} 语言', en: '{t} keys · {l} langs' },
+        stCur: { zh: '{name} {tr}/{t}', en: '{name} {tr}/{t}' },
+        stBad: { zh: '损坏 {n}', en: 'broken {n}' },
+        stCols: { zh: '列 {v}/{c}', en: 'cols {v}/{c}' },
+        opErrorTxt: { zh: '操作失败', en: 'Failed' },
+        errInitTxt: { zh: '初始化出错', en: 'Init error' }
     };
-    function t(key) {
+    function t(key, vars) {
         const m = I18N[key];
-        return m ? m[locale] || m.zh : key;
+        let s = m ? m[locale] || m.zh : key;
+        if (vars) {
+            for (const k of Object.keys(vars)) {
+                s = s.split('{' + k + '}').join(String(vars[k]));
+            }
+        }
+        return s;
     }
     function translateStatic() {
         document.querySelectorAll('[data-i18n]').forEach((el) => {
             el.textContent = t(el.dataset.i18n);
+        });
+        document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+            el.title = t(el.dataset.i18nTitle);
+        });
+        document.querySelectorAll('[data-i18n-ph]').forEach((el) => {
+            el.placeholder = t(el.dataset.i18nPh);
         });
     }
 
@@ -116,6 +193,9 @@
         vscode.postMessage(msg);
     }
     function sendOp(op) {
+        if (op.type === 'setValue' && op.key === '') {
+            return; // draft rows have no real key yet
+        }
         post({ type: 'op', op });
     }
     function requestSnapshot() {
@@ -425,8 +505,16 @@
                 return false;
             });
         }
-        if (sort.code) {
-            const { code, dir } = sort;
+        const { kind, code, dir } = sort;
+        if (kind === 'key') {
+            // Alphabetical order on the translation keys.
+            arr.sort((a, b) => {
+                if (a === b) {
+                    return 0;
+                }
+                return (a < b ? -1 : 1) * dir;
+            });
+        } else if (kind === 'lang' && code) {
             arr.sort((a, b) => {
                 const va = getVal(a, code) || '';
                 const vb = getVal(b, code) || '';
@@ -442,8 +530,6 @@
                 }
                 return r * dir;
             });
-        } else if (sort.dir < 0) {
-            arr = arr.slice().reverse();
         }
         return arr;
     }
@@ -538,12 +624,14 @@
         keyCell.title = '双击重命名 key';
         keyCell.textContent = key;
         row.appendChild(keyCell);
+        row.setAttribute('data-vscode-context', JSON.stringify({ webviewSection: 'gridRow' }));
 
         for (const code of visibleLangs) {
             const cell = document.createElement('div');
             cell.className = 'cell langcell';
             cell.dataset.key = key;
             cell.dataset.code = code;
+            cell.setAttribute('data-vscode-context', JSON.stringify({ webviewSection: 'gridValue' }));
             const p = pendingCells.get(keyOfCell(key, code));
             const value = p ? p.value : getVal(key, code);
             if (value === '') {
@@ -633,12 +721,13 @@
         selCol.appendChild(checkAllInput);
         head.appendChild(selCol);
 
-        const sortMark = sort.code === null ? (sort.dir < 0 ? ' ▾' : '') : (sort.dir === 1 ? ' ▴' : ' ▾');
-        head.appendChild(createHeaderCell('cell keycol head-key', 'key', 'key' + sortMark));
+        const keyMark = sort.kind === 'key' ? (sort.dir === 1 ? ' ▴' : ' ▾') : '';
+        head.appendChild(createHeaderCell('cell keycol head-key', 'key', 'key' + keyMark));
 
         for (const code of visibleLangs) {
             const name = data.langs.find((l) => l.code === code);
-            const label = (name ? name.name : code) + (sort.code === code ? (sort.dir === 1 ? ' ▴' : ' ▾') : '');
+            const mark = sort.kind === 'lang' && sort.code === code ? (sort.dir === 1 ? ' ▴' : ' ▾') : '';
+            const label = (name ? name.name : code) + mark;
             const cls = 'cell langcol' + (code === primary ? ' current' : '');
             head.appendChild(createHeaderCell(cls, code, label));
         }
@@ -937,7 +1026,7 @@
             const newKey = raw.trim();
             if (newKey && newKey !== key) {
                 if (data.keys.includes(newKey)) {
-                    showNotice('error', `key 已存在: ${newKey}`, null);
+                    showNotice('error', `${t('keyExistsWarn')}: ${newKey}`, null);
                 } else {
                     sendOp({ type: 'renameKey', oldKey: key, newKey });
                 }
@@ -1094,14 +1183,14 @@
         input.value = key;
         input.spellcheck = false;
         input.autocomplete = 'off';
-        input.title = '重命名会同步到所有语言文件（Enter 提交 / Esc 还原）';
+        input.title = t('uiKeyTitle');
         rowEl.appendChild(input);
         attachFieldUndo(input);
         attachCompletion(input, (q) => keySuggestions(q));
 
         const hint = document.createElement('span');
         hint.className = 'dl-key-hint';
-        hint.textContent = '改 key 后 Enter 提交（同步所有语言）';
+        hint.textContent = t('keyHint');
         rowEl.appendChild(hint);
         wrap.appendChild(rowEl);
         rows.appendChild(wrap);
@@ -1112,8 +1201,37 @@
                 return;
             }
             const raw = input.value.trim();
+            if (key === '') {
+                // Creating a brand-new key straight in the detail editor.
+                if (!draftNew || els.detail.classList.contains('hidden')) {
+                    return; // already canceled / closing — do nothing
+                }
+                if (!raw) {
+                    closeDetail(); // empty draft → just cancel, no error
+                    return;
+                }
+                if (data.keys.includes(raw)) {
+                    // Already exists → abandon the draft and jump to it.
+                    draftNew = false;
+                    closeDetail();
+                    clearSelection();
+                    selected.add(raw);
+                    refreshRows();
+                    scrollKeyIntoView(raw);
+                    openDetail(raw);
+                    updateSelectionUi();
+                    showNotice('info', `${t('existing')}: ${raw}`, null, 2200);
+                    return;
+                }
+                committed = true;
+                draftNew = false;
+                const code = primary || (data.langs[0] && data.langs[0].code) || '';
+                sendOp({ type: 'addKey', key: raw, code, value: '' });
+                pendingAddKey = raw;
+                return;
+            }
             if (!raw) {
-                showNotice('error', 'key 不能为空', null);
+                showNotice('error', t('keyEmptyWarn'), null);
                 input.focus();
                 return;
             }
@@ -1121,7 +1239,7 @@
                 return; // no change; allow further edits
             }
             if (data.keys.includes(raw)) {
-                showNotice('error', `key 已存在: ${raw}`, null);
+                showNotice('error', `${t('keyExistsWarn')}: ${raw}`, null);
                 input.focus();
                 return;
             }
@@ -1136,6 +1254,10 @@
             } else if (ev.key === 'Escape') {
                 ev.preventDefault();
                 ev.stopPropagation();
+                if (key === '') {
+                    closeDetail(); // cancel an empty draft
+                    return;
+                }
                 if (!committed) {
                     input.value = key;
                     input.setSelectionRange(key.length, key.length);
@@ -1168,17 +1290,19 @@
             l.appendChild(chip);
             if (lang.code === primary) {
                 const tag = document.createElement('span');
-                tag.textContent = '(当前文件)';
+                tag.textContent = locale === 'zh' ? '(当前文件)' : '(current)';
                 tag.style.opacity = '0.7';
                 l.appendChild(tag);
             }
             wrap.appendChild(l);
             const ta = document.createElement('textarea');
-            ta.rows = 2;
             ta.spellcheck = false;
             ta.autocomplete = 'off';
             const val = getVal(key, lang.code);
             ta.value = val;
+            // Initial height follows the number of lines, capped at 8 rows.
+            const lineCount = val ? val.split('\n').length : 1;
+            ta.rows = Math.min(8, Math.max(2, lineCount));
             ta.dataset.code = lang.code;
             ta.classList.toggle('empty', val === '');
             attachFieldUndo(ta);
@@ -1194,34 +1318,110 @@
             wrap.appendChild(ta);
             rows.appendChild(wrap);
         }
-        if (detailHeight) {
-            applyDetailHeight(detailHeight);
-        }
         els.detail.classList.remove('hidden');
+        if (els.dockDivider) {
+            els.dockDivider.style.display = '';
+        }
+        applyDockLayout();
         updatePlaceholderWarn(key);
     }
 
-    // ------------------------------------------------- detail panel height
-    let detailHeight = null; // px once the user drags the resizer
+    // -------------------------------------------------- detail panel layout
+    // Dock modes: 'bottom' | 'left' | 'right' | 'full'. Sizes are remembered
+    // separately for bottom (height) and side (width) docking.
+    let detailDock = 'bottom';
+    let dockBottomH = null;   // px, only set once the user drags
+    let dockSideW = 460;      // px width when docked left/right
 
-    function detailMaxH() {
-        return Math.max(160, window.innerHeight - 170);
+    function setDock(mode) {
+        detailDock = mode;
+        applyDockLayout();
     }
-    function applyDetailHeight(px) {
-        const h = Math.max(90, Math.min(Number(px) || 240, detailMaxH()));
-        els.detail.style.height = h + 'px';
-        els.detail.classList.add('custom');
-        detailHeight = h;
-        window.requestAnimationFrame(renderWindow);
-    }
-    function persistDetailHeight() {
-        const s = vscode.getState() || {};
-        if (detailHeight) {
-            s.detailH = detailHeight;
-        } else {
-            delete s.detailH;
+    function applyDockLayout() {
+        const ws = els.workspace;
+        const divider = els.dockDivider;
+        if (!ws || !divider || els.detail.classList.contains('hidden')) {
+            if (divider) {
+                divider.style.display = 'none';
+            }
+            return;
         }
-        vscode.setState(s);
+        const isBottom = detailDock === 'bottom';
+        const isSide = detailDock === 'left' || detailDock === 'right';
+        const isFull = detailDock === 'full';
+
+        ws.className = 'dock-' + detailDock;
+        els.detail.classList.toggle('fullscreen', isFull);
+        els.detail.classList.toggle('hidden', false);
+
+        // Flex order inside the workspace: grid & divider & detail placement.
+        const grid = els.gridWrap;
+        const detail = els.detail;
+        if (isBottom) {
+            grid.style.order = '0';
+            divider.style.order = '1';
+            detail.style.order = '2';
+            divider.style.width = '';
+            divider.style.height = '';
+            divider.style.flexBasis = '';
+            detail.style.width = '';
+            detail.style.height = dockBottomH ? dockBottomH + 'px' : '';
+            detail.style.maxHeight = dockBottomH ? 'none' : '';
+        } else if (isSide) {
+            detail.style.order = detailDock === 'left' ? '0' : '2';
+            divider.style.order = detailDock === 'left' ? '1' : '1';
+            grid.style.order = detailDock === 'left' ? '2' : '0';
+            detail.style.height = '';
+            detail.style.maxHeight = 'none';
+            detail.style.width = dockSideW + 'px';
+            divider.style.width = '';
+            divider.style.height = '';
+            divider.style.flexBasis = '';
+        }
+        if (isFull) {
+            // Fullscreen overlays the whole webview: drop any leftover inline
+            // sizing/order from the previous dock so inset:0 really fills it.
+            divider.style.display = 'none';
+            detail.style.width = '';
+            detail.style.height = '';
+            detail.style.maxHeight = '';
+            detail.style.order = '';
+            grid.style.order = '';
+            divider.style.order = '';
+        } else {
+            divider.style.display = '';
+        }
+        divider.title = isBottom
+            ? t('divBottomTitle2')
+            : t('divSideTitle2');
+
+        window.requestAnimationFrame(renderWindow);
+        syncUndockButtons();
+    }
+    function syncUndockButtons() {
+        const group = els.dockBtnGroup;
+        if (!group) {
+            return;
+        }
+        group.querySelectorAll('button').forEach((b) => {
+            b.classList.toggle('active', b.dataset.dock === detailDock);
+        });
+    }
+    /** Called on user layout actions: remember sizes (host globalState) and dock
+     *  position (also written to the `detailDock` setting by the host). */
+    function persistDockState() {
+        post({
+            type: 'layoutChange',
+            dock: detailDock,
+            bottomH: dockBottomH || null,
+            sideW: dockSideW
+        });
+    }
+    function dockMaxFor(isSide) {
+        if (isSide) {
+            return Math.max(200, window.innerWidth - 320);
+        }
+        return Math.max(120, window.innerHeight - 200);
     }
 
     function updatePlaceholderWarn(key) {
@@ -1244,8 +1444,8 @@
         }
         const warn = els.placeholderWarn;
         if (mismatch.length) {
-            warn.textContent = `⚠ 占位符不一致: ${mismatch.join(', ')}`;
-            warn.title = '不同语言之间 %s / %d / %1$s 等占位符数量或顺序不一致，游戏内可能显示错误';
+            warn.textContent = t('plWarn', { c: mismatch.join(', ') });
+            warn.title = t('plWarnTitle');
             warn.classList.remove('hidden');
         } else {
             warn.classList.add('hidden');
@@ -1255,16 +1455,148 @@
     function closeDetail() {
         flushPending();
         detailKey = null;
+        draftNew = false;
         els.detail.classList.add('hidden');
+        if (els.dockDivider) {
+            els.dockDivider.style.display = 'none';
+        }
         els.placeholderWarn.classList.add('hidden');
     }
 
-    function removeKeys(keyList) {
+    // ----------------------------------------- themed modal dialogs
+    // window.confirm / window.prompt are blocked inside VS Code webviews, so we
+    // render our own theme-styled modal for confirmations and text input.
+    let modalLayer = null;
+    let pendingModal = null;
+    function isModalOpen() {
+        return pendingModal !== null;
+    }
+    function closeModal(value) {
+        const r = pendingModal;
+        pendingModal = null;
+        if (modalLayer) {
+            modalLayer.classList.add('hidden');
+            modalLayer.textContent = '';
+        }
+        if (r) {
+            r(value);
+        }
+    }
+    function modalBox() {
+        if (!modalLayer) {
+            modalLayer = document.createElement('div');
+            modalLayer.className = 'modal-layer hidden';
+            modalLayer.addEventListener('mousedown', (ev) => {
+                if (ev.target === modalLayer) {
+                    closeModal(null);
+                }
+            });
+            document.body.appendChild(modalLayer);
+        }
+        modalLayer.classList.remove('hidden');
+        modalLayer.textContent = '';
+        const box = document.createElement('div');
+        box.className = 'modal-box';
+        modalLayer.appendChild(box);
+        return box;
+    }
+    function modalButton(label, accent) {
+        const b = document.createElement('button');
+        b.className = 'tb' + (accent ? ' accent' : '');
+        b.textContent = label;
+        return b;
+    }
+    /**
+     * Themed confirm dialog. Without `rememberLabel` it resolves to a boolean;
+     * with one it resolves to `true` / `'always'` / `false`.
+     */
+    function uiConfirm(message, okLabel, cancelLabel, rememberLabel) {
+        return new Promise((resolve) => {
+            pendingModal = resolve;
+            const box = modalBox();
+            const msg = document.createElement('div');
+            msg.className = 'modal-msg';
+            msg.textContent = message;
+            box.appendChild(msg);
+            let remember = null;
+            if (rememberLabel) {
+                const row = document.createElement('label');
+                row.className = 'modal-remember';
+                remember = document.createElement('input');
+                remember.type = 'checkbox';
+                row.appendChild(remember);
+                row.appendChild(document.createTextNode(rememberLabel));
+                box.appendChild(row);
+            }
+            const btns = document.createElement('div');
+            btns.className = 'modal-btns';
+            const cancel = modalButton(cancelLabel || t('mCancel'));
+            const ok = modalButton(okLabel || t('mOk'), true);
+            cancel.addEventListener('click', () => closeModal(false));
+            ok.addEventListener('click', () => {
+                closeModal(remember && remember.checked ? 'always' : true);
+            });
+            btns.append(cancel, ok);
+            box.appendChild(btns);
+            ok.focus();
+        });
+    }
+    function uiPrompt(message, value, okLabel, placeholder) {
+        return new Promise((resolve) => {
+            pendingModal = resolve;
+            const box = modalBox();
+            const msg = document.createElement('div');
+            msg.className = 'modal-msg';
+            msg.textContent = message;
+            box.appendChild(msg);
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'modal-input';
+            input.value = value || '';
+            input.spellcheck = false;
+            if (placeholder) {
+                input.placeholder = placeholder;
+            }
+            box.appendChild(input);
+            const btns = document.createElement('div');
+            btns.className = 'modal-btns';
+            const cancel = modalButton(t('mCancel'));
+            const ok = modalButton(okLabel || t('mOk'), true);
+            cancel.addEventListener('click', () => closeModal(null));
+            ok.addEventListener('click', () => closeModal(input.value));
+            const onEnter = (ev) => {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    closeModal(input.value);
+                }
+            };
+            input.addEventListener('keydown', onEnter);
+            btns.append(cancel, ok);
+            box.appendChild(btns);
+            input.focus();
+            input.select();
+        });
+    }
+
+    async function removeKeys(keyList) {
         if (!keyList.length) {
             return;
         }
-        if (confirmDelete && !window.confirm(`确定要从所有 ${data.langs.length} 个语言文件中删除 ${keyList.length} 个 key 吗？\n\n此操作可撤销 (Ctrl+Z)。`)) {
-            return;
+        if (confirmDelete) {
+            let msg = `确定要从所有 ${data.langs.length} 个语言文件中删除 ${keyList.length} 个 key 吗？`;
+            if (keyList.length <= 10) {
+                msg += `\n\n${keyList.join('\n')}`;
+            }
+            msg += '\n\n此操作可撤销 (Ctrl+Z)。';
+            const res = await uiConfirm(msg, t('mDelOk'), t('mCancel'), t('mDoNotAsk'));
+            if (res === false) {
+                return;
+            }
+            if (res === 'always') {
+                // Remember the choice & write it to the VS Code setting.
+                confirmDelete = false;
+                post({ type: 'setConfirmDelete', value: false });
+            }
         }
         sendOp({ type: 'removeKeys', keys: keyList });
     }
@@ -1320,7 +1652,7 @@
 
     function toggleLangColumn(code) {
         if (visibleLangs.length === 1 && visibleLangs[0] === code) {
-            showNotice('warn', '至少要保留一个语言列', null);
+            showNotice('warn', t('langOneWarn'), null);
             return;
         }
         const i = visibleLangs.indexOf(code);
@@ -1341,28 +1673,26 @@
     function updateStatsText() {
         const total = data.keys.length;
         const l = data.langs.length;
+        const parts = [t('stFmt', { t: total, l })];
         const p = primary || (data.langs[0] && data.langs[0].code);
-        let missing = 0;
-        if (p) {
-            for (const k of data.keys) {
-                if (getVal(k, p) === '') {
-                    missing++;
-                }
-            }
-        }
-        const broken = data.broken.length;
-        let s = `📝 ${total} 个 key · ${l} 种语言`;
         if (p) {
             const shown = data.langs.find((x) => x.code === p);
-            s += ` · 当前文件 ${shown ? shown.name : p}：${total - missing} 已翻译${missing ? `，${missing} 未翻译` : ''}`;
+            const name = shown ? shown.name : p;
+            let trn = 0;
+            for (const k of data.keys) {
+                if (getVal(k, p) !== '') {
+                    trn++;
+                }
+            }
+            parts.push(t('stCur', { name, tr: trn, t: total }));
         }
-        if (broken) {
-            s += ` · ⚠ ${broken} 个文件解析失败`;
+        if (data.broken.length) {
+            parts.push(t('stBad', { n: data.broken.length }));
         }
-        if (visibleLangs.length < data.langs.length) {
-            s += ` · 显示 ${visibleLangs.length}/${data.langs.length} 列`;
+        if (visibleLangs.length < l) {
+            parts.push(t('stCols', { v: visibleLangs.length, c: l }));
         }
-        els.statText.textContent = s;
+        els.statText.textContent = parts.join(' · ');
     }
 
     function showNotice(level, text, action, timeoutMs) {
@@ -1414,54 +1744,28 @@
         }
     }
 
-    // ------------------------------------------------------------ add dialog
-    function openAddBar() {
+    // ------------------------------------------------- add via detail draft
+    // "＋ 添加" reuses the detail editor: it opens the panel with an empty key
+    // field; typing the key and pressing Enter creates it (all languages gain an
+    // empty placeholder row) and editing continues in the same place.
+    function startCreateKey() {
+        if (data.langs.length === 0) {
+            showNotice('warn', t('langOneWarn'), null);
+            return;
+        }
+        if (activeInline) {
+            commitInline();
+        }
         flushPending();
-        els.addBar.classList.remove('hidden');
-        els.addLang.textContent = '';
-        const sel = document.createElement('select');
-        for (const lang of data.langs) {
-            const opt = document.createElement('option');
-            opt.value = lang.code;
-            opt.textContent = lang.name;
-            if (lang.code === primary) {
-                opt.selected = true;
-            }
-            sel.appendChild(opt);
-        }
-        els.addLang.appendChild(sel);
-        els.addKey.value = '';
-        els.addValue.value = '';
-        els.addKey.focus();
-    }
-    function closeAddBar() {
-        els.addBar.classList.add('hidden');
-    }
-    function submitAdd() {
-        const key = els.addKey.value.trim();
-        if (!key) {
-            showNotice('warn', 'key 不能为空', null);
-            els.addKey.focus();
-            return;
-        }
-        if (data.keys.includes(key)) {
-            // Jump to the existing row instead of failing.
-            closeAddBar();
-            clearSelection();
-            selected.add(key);
-            refreshRows();
-            scrollKeyIntoView(key);
-            openDetail(key);
-            updateSelectionUi();
-            showNotice('info', `${t('existing')}: ${key}`, null, 2600);
-            return;
-        }
-        const code = els.addLang.querySelector('select').value;
-        const value = els.addValue.value;
-        closeAddBar();
+        draftNew = true;
         clearSelection();
-        sendOp({ type: 'addKey', key, code, value });
-        pendingAddKey = key;
+        updateSelectionUi();
+        openDetail('');
+        const input = els.detailRows ? els.detailRows.querySelector('.dl-key-input') : null;
+        if (input) {
+            input.focus();
+        }
+        els.btnDeleteOne.disabled = true;
     }
     let pendingAddKey = null;
 
@@ -1574,14 +1878,37 @@
                 els.folderBadge.textContent = msg.folderName || '';
                 els.folderBadge.title = msg.folderPath || '';
                 if (msg.bindName) {
-                    els.bindInfo.textContent = `当前文件: ${msg.bindName}`;
+                    els.bindInfo.textContent = `${t('uiCur')}: ${msg.bindName}`;
                 }
                 translateStatic();
+                document.documentElement.style.setProperty('--empty-marker', JSON.stringify(t('missingCell')));
                 break;
             }
             case 'uiConfig':
                 applyUiConfig(msg);
                 break;
+            case 'config':
+                if (msg.confirmDelete !== undefined) {
+                    confirmDelete = !!msg.confirmDelete;
+                }
+                if (msg.detailDock) {
+                    detailDock = msg.detailDock;
+                    applyDockLayout();
+                }
+                break;
+            case 'layoutCfg': {
+                if (msg.dock) {
+                    detailDock = msg.dock;
+                }
+                if (typeof msg.bottomH === 'number') {
+                    dockBottomH = msg.bottomH;
+                }
+                if (typeof msg.sideW === 'number') {
+                    dockSideW = msg.sideW;
+                }
+                applyDockLayout();
+                break;
+            }
             case 'snapshot': {
                 data.langs = msg.langs || [];
                 data.broken = msg.broken || [];
@@ -1598,8 +1925,7 @@
                     }
                 }
                 if (detailKey && !data.keys.includes(detailKey)) {
-                    detailKey = null;
-                    els.detail.classList.add('hidden');
+                    closeDetail();
                 }
                 renderHeader();
                 refreshRows();
@@ -1609,12 +1935,30 @@
                 }
                 break;
             }
+            case 'ctxCmd': {
+                contextAction(msg.cmd);
+                break;
+            }
+            case 'cmdAddKey': {
+                // Only act when the focus is in the table or a key field — never
+                // while typing inside a translation textarea or a dialog input.
+                const t0 = document.activeElement;
+                const editingValue = t0 && (t0.tagName === 'TEXTAREA' ||
+                    (t0.tagName === 'INPUT' && t0.closest && t0.closest('.modal-layer')) ||
+                    (t0.classList && t0.classList.contains('inline-input') &&
+                     t0.closest && t0.closest('.langcell')));
+                if (editingValue) {
+                    break;
+                }
+                startCreateKey();
+                break;
+            }
             case 'op': {
                 applyOpLocally(msg.op);
                 break;
             }
             case 'opError': {
-                showNotice('error', msg.error || '操作失败', { id: 'reload', label: '重新加载' });
+                showNotice('error', msg.error || t('opErrorTxt'), { id: 'reload', label: t('reload') });
                 requestSnapshot();
                 break;
             }
@@ -1631,10 +1975,125 @@
         }
     });
 
+    // ---- native context-menu state (commands come back from the host) ----
+    let ctxRow = { key: null, code: null };
+    function entryText(key) {
+        const lines = [];
+        for (const lang of data.langs) {
+            lines.push(`[${lang.code}] ${getVal(key, lang.code)}`);
+        }
+        return [key, ...lines].join(String.fromCharCode(10));
+    }
+    function contextAction(cmd) {
+        if (!ctxRow || !ctxRow.key) {
+            return;
+        }
+        const { key, code } = ctxRow;
+        if (cmd === 'copyKey') {
+            post({ type: 'copy', text: key });
+        } else if (cmd === 'copyValue' && code) {
+            post({ type: 'copy', text: getVal(key, code) });
+        } else if (cmd === 'copyEntry') {
+            post({ type: 'copy', text: entryText(key) });
+        } else if (cmd === 'deleteContextKey') {
+            removeKeys([key]);
+        }
+        ctxRow = { key: null, code: null };
+    }
+
     function updateStats() {
         renderLangChips();
         updateStatsText();
         updateSelectionUi();
+    }
+
+    // ------------------------------------------------- detail nav & jump
+    /** Focus the value editor of the current language inside the detail pane. */
+    function focusDetailValue() {
+        if (!detailKey) {
+            return;
+        }
+        const code = primary || (data.langs[0] && data.langs[0].code);
+        if (!code) {
+            return;
+        }
+        const ta = els.detailRows ? els.detailRows.querySelector('textarea[data-code="' + CSS.escape(code) + '"]') : null;
+        if (ta) {
+            ta.focus();
+            const len = ta.value.length;
+            try {
+                ta.setSelectionRange(len, len);
+            } catch {
+                // ignore
+            }
+        }
+    }
+
+    /** Move the detail editor to the previous/next key of the current list. */
+    function navigateDetail(dir) {
+        if (!detailKey || draftNew) {
+            return;
+        }
+        if (rowsCache.length === 0) {
+            return;
+        }
+        let idx = rowsCache.indexOf(detailKey);
+        if (idx === -1) {
+            idx = dir > 0 ? -1 : rowsCache.length;
+        }
+        let next = idx + dir;
+        if (next < 0) {
+            next = rowsCache.length - 1;
+        }
+        if (next >= rowsCache.length) {
+            next = 0;
+        }
+        const target = rowsCache[next];
+        flushPending(); // commit pending edits of the current key first
+        clearSelection();
+        selected.add(target);
+        detailKey = target;
+        refreshRows();
+        scrollKeyIntoView(target);
+        openDetail(target);
+        updateSelectionUi();
+        focusDetailValue();
+    }
+
+    /** Quick-jump to a specific translation key (supports partial match). */
+    async function jumpToKey() {
+        const answer = await uiPrompt(t('jumpPrompt'), detailKey || '', t('mOk'), t('jumpPh'));
+        if (answer === null) {
+            return;
+        }
+        const q = String(answer).trim();
+        if (!q) {
+            return;
+        }
+        const lower = q.toLowerCase();
+        let target = data.keys.find((k) => k.toLowerCase() === lower);
+        if (!target) {
+            target = data.keys.find((k) => k.toLowerCase().includes(lower));
+        }
+        if (!target) {
+            showNotice('warn', `${t('jumpNone')}: ${q}`, null, 2600);
+            return;
+        }
+        // Make sure filters can't hide the target row.
+        if (filterText || onlyMissing) {
+            filterText = '';
+            els.filter.value = '';
+            onlyMissing = false;
+            els.onlyMissingChk.checked = false;
+            refreshRows();
+        }
+        clearSelection();
+        selected.add(target);
+        refreshRows();
+        scrollKeyIntoView(target);
+        openDetail(target);
+        updateSelectionUi();
+        focusDetailValue();
     }
 
     // ---------------------------------------------------------------- events
@@ -1647,38 +2106,18 @@
             flushPending();
             post({ type: 'redo' });
         });
-        els.reload.addEventListener('click', () => {
-            if (window.confirm('从磁盘重新加载？未同步到磁盘的修改会丢失，撤销历史将被清空。')) {
+        els.reload.addEventListener('click', async () => {
+            const ok = await uiConfirm(t('reloadConfirm'), t('reload'), t('mCancel'));
+            if (ok) {
                 flushPending();
                 post({ type: 'reload' });
             }
         });
-        els.add.addEventListener('click', openAddBar);
-        els.addCancel.addEventListener('click', closeAddBar);
-        els.addOk.addEventListener('click', submitAdd);
+        els.add.addEventListener('click', startCreateKey);
         els.del.addEventListener('click', () => {
             removeKeys([...selected]);
         });
-
-        // Static editable fields also get per-field undo/redo.
         attachFieldUndo(els.filter);
-        attachFieldUndo(els.addKey);
-        attachFieldUndo(els.addValue);
-
-        // Key input completion + keyboard flow in the add bar.
-        attachCompletion(els.addKey, (q) => keySuggestions(q));
-        els.addKey.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter') {
-                ev.preventDefault();
-                els.addValue.focus();
-            }
-        });
-        els.addValue.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
-                ev.preventDefault();
-                submitAdd();
-            }
-        });
 
         els.filter.addEventListener('input', () => {
             filterText = els.filter.value.trim();
@@ -1701,17 +2140,20 @@
                 return;
             }
             if (cell.classList.contains('keycol')) {
-                if (sort.code === null) {
-                    sort = { code: null, dir: sort.dir === 1 ? -1 : 1 };
+                // key: none → key asc → key desc → none
+                if (sort.kind !== 'key') {
+                    sort = { kind: 'key', code: null, dir: 1 };
+                } else if (sort.dir === 1) {
+                    sort = { kind: 'key', code: null, dir: -1 };
                 } else {
-                    sort = { code: null, dir: 1 };
+                    sort = { kind: 'none', code: null, dir: 1 };
                 }
             } else if (cell.classList.contains('langcol')) {
                 const code = cell.dataset.code;
-                if (sort.code === code) {
-                    sort = { code, dir: sort.dir === 1 ? -1 : 1 };
+                if (sort.kind === 'lang' && sort.code === code) {
+                    sort = { kind: 'lang', code, dir: sort.dir === 1 ? -1 : 1 };
                 } else {
-                    sort = { code, dir: 1 };
+                    sort = { kind: 'lang', code, dir: 1 };
                 }
             } else {
                 return;
@@ -1794,12 +2236,12 @@
                 return;
             }
             if (ev.key === 'Escape') {
-                if (activeInline) {
-                    endInlineEdit();
+                if (isModalOpen()) {
+                    closeModal(null); // a modal always wins over the rest
                     return;
                 }
-                if (!els.addBar.classList.contains('hidden')) {
-                    closeAddBar();
+                if (activeInline) {
+                    endInlineEdit();
                     return;
                 }
                 if (!els.detail.classList.contains('hidden')) {
@@ -1810,12 +2252,29 @@
             }
             const mod = ev.ctrlKey || ev.metaKey;
             if (mod && !ev.altKey) {
+                const t = ev.target;
+                const editingTranslation = t && (t.tagName === 'TEXTAREA' ||
+                    (t.classList && t.classList.contains('inline-input') && t.closest && t.closest('.langcell')) ||
+                    (t.tagName === 'INPUT' && t.closest && t.closest('.modal-layer')));
+                const gk = ev.key;
+                if (gk === 'Enter' && !editingTranslation) {
+                    // Ctrl+Enter / Ctrl+Shift+Enter → add a new key (grid/key focus only).
+                    ev.preventDefault();
+                    startCreateKey();
+                    return;
+                }
+                const inDetailPane = !!(t && t.closest && t.closest('#detail'));
+                if (!ev.shiftKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && inDetailPane && detailKey) {
+                    // Ctrl+↑ / Ctrl+↓ inside the detail panel → previous/next key.
+                    ev.preventDefault();
+                    navigateDetail(ev.key === 'ArrowUp' ? -1 : 1);
+                    return;
+                }
                 const isUndoKey = ev.key === 'z' || ev.key === 'Z';
                 const isRedoKey = ev.key === 'y' || ev.key === 'Y';
                 if (isUndoKey || isRedoKey) {
                     ev.preventDefault();
                     const isRedo = ev.shiftKey || isRedoKey;
-                    const t = ev.target;
                     const field = (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) ? t : null;
                     if (field) {
                         // While editing: only the field's own undo/redo runs — and
@@ -1856,77 +2315,224 @@
             ro.observe(els.bodyScroll);
         }
 
-        // ---- draggable resizer: adjust the detail panel height ----
-        const resizer = document.createElement('div');
-        resizer.id = 'detailResizer';
-        resizer.title = '拖动调整详情面板高度';
-        resizer.setAttribute('aria-orientation', 'horizontal');
-        els.detail.insertBefore(resizer, els.detail.firstChild);
+        // ---- detail panel: dock controls + prev/next navigation ----
+        const head = els.detail.querySelector('.detail-head');
+        const title = head.querySelector('.head-title, [data-i18n="detailTitle"]');
+        const mkBtn = (glyph, text, titleText) => {
+            const b = document.createElement('button');
+            b.className = 'tb small';
+            b.title = titleText;
+            b.textContent = glyph + (text ? ' ' + text : '');
+            return b;
+        };
 
-        let drag = null;
-        const onMove = (ev) => {
-            if (!drag) {
+        // prev / next group (inserted right after the title)
+        const nav = document.createElement('div');
+        nav.className = 'detail-nav';
+        const btnPrev = mkBtn('↑', '', t('navPrevT'));
+        const btnNext = mkBtn('↓', '', t('navNextT'));
+        const btnJump = mkBtn('⤷', '', t('navJumpT'));
+        btnPrev.addEventListener('click', () => navigateDetail(-1));
+        btnNext.addEventListener('click', () => navigateDetail(1));
+        btnJump.addEventListener('click', jumpToKey);
+        nav.append(btnPrev, btnNext, btnJump);
+        if (title) {
+            title.after(nav);
+        } else {
+            head.insertBefore(nav, head.firstChild);
+        }
+
+        // dock buttons (inserted before the close button)
+        const dockGroup = document.createElement('div');
+        dockGroup.className = 'dock-btn-group';
+        const dockDefs = [
+            ['bottom', '⤓', t('dockBottomT')],
+            ['left', '⤪', t('dockLeftT')],
+            ['right', '⤩', t('dockRightT')],
+            ['full', '⤢', t('dockFullT')]
+        ];
+        for (const [mode, glyph, hint] of dockDefs) {
+            const b = mkBtn(glyph, '', hint);
+            b.dataset.dock = mode;
+            b.addEventListener('click', () => {
+                setDock(mode);
+                persistDockState();
+            });
+            dockGroup.appendChild(b);
+        }
+        els.dockBtnGroup = dockGroup;
+        const closeBtn = head.querySelector('#btnCloseDetail');
+        if (closeBtn) {
+            head.insertBefore(dockGroup, closeBtn);
+        } else {
+            head.appendChild(dockGroup);
+        }
+        syncUndockButtons();
+
+        // ---- resizable divider between the grid and the detail panel ----
+        els.dockDivider = document.createElement('div');
+        els.dockDivider.id = 'dockDivider';
+        els.gridWrap.after(els.dockDivider);
+
+        const isSideDock = () => detailDock === 'left' || detailDock === 'right';
+        const sideSign = () => (detailDock === 'left' ? 1 : -1);
+
+        let dDrag = null;
+        const dockMove = (ev) => {
+            if (!dDrag) {
                 return;
             }
             ev.preventDefault();
-            // Moving the handle up grows the panel below the grid.
-            applyDetailHeight(drag.h + (drag.y - ev.clientY));
+            if (detailDock === 'bottom') {
+                const px = dDrag.base + (dDrag.startY - ev.clientY);
+                dockBottomH = Math.max(120, Math.min(px, dockMaxFor(false)));
+                els.detail.style.height = dockBottomH + 'px';
+                els.detail.style.maxHeight = 'none';
+            } else if (isSideDock()) {
+                const px = dDrag.base + (ev.clientX - dDrag.startX) * sideSign();
+                dockSideW = Math.max(220, Math.min(px, dockMaxFor(true)));
+                els.detail.style.width = dockSideW + 'px';
+            }
+            window.requestAnimationFrame(renderWindow);
         };
-        const endDrag = () => {
-            if (!drag) {
+        const dockEnd = () => {
+            if (!dDrag) {
                 return;
             }
-            drag = null;
-            resizer.classList.remove('dragging');
-            document.body.classList.remove('dragging');
-            persistDetailHeight();
+            dDrag = null;
+            els.dockDivider.classList.remove('dragging');
+            document.body.classList.remove('dock-resizing');
+            persistDockState();
         };
-        resizer.addEventListener('pointerdown', (ev) => {
-            if (els.detail.classList.contains('hidden')) {
+        els.dockDivider.addEventListener('pointerdown', (ev) => {
+            if (detailDock === 'full') {
                 return;
             }
             ev.preventDefault();
             try {
-                resizer.setPointerCapture(ev.pointerId);
+                els.dockDivider.setPointerCapture(ev.pointerId);
             } catch {
                 // ignore
             }
-            drag = { y: ev.clientY, h: els.detail.offsetHeight || 240 };
-            resizer.classList.add('dragging');
-            document.body.classList.add('dragging');
+            dDrag = {
+                startX: ev.clientX,
+                startY: ev.clientY,
+                base: detailDock === 'bottom' ? els.detail.offsetHeight : els.detail.offsetWidth
+            };
+            els.dockDivider.classList.add('dragging');
+            document.body.classList.add('dock-resizing');
         });
-        resizer.addEventListener('pointermove', onMove);
-        resizer.addEventListener('pointerup', endDrag);
-        resizer.addEventListener('pointercancel', endDrag);
+        els.dockDivider.addEventListener('pointermove', dockMove);
+        els.dockDivider.addEventListener('pointerup', dockEnd);
+        els.dockDivider.addEventListener('pointercancel', dockEnd);
+        applyDockLayout();
 
-        post({ type: 'ready' });
+        // ---- native VS Code context menu (via webview/context menus) ----
+        // VS Code itself renders the menu for the section the element belongs to
+        // (data-vscode-context). Here we only remember which row/language was
+        // right-clicked; the chosen command comes back as {type:'ctxCmd'}.
+        els.rowSpacer.addEventListener('contextmenu', (ev) => {
+            const row = ev.target.closest('.grid-row');
+            if (!row) {
+                return;
+            }
+            const cell = ev.target.closest('.cell');
+            ctxRow = {
+                key: row.dataset.key || null,
+                code: cell && cell.dataset.code ? cell.dataset.code : null
+            };
+        });
+
+        // Keep focus/caret inside a text field after the native menu closes.
+        document.addEventListener('contextmenu', (ev) => {
+            const t = ev.target;
+            if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) {
+                return;
+            }
+            const st = t.selectionStart != null ? t.selectionStart : t.value.length;
+            const en = t.selectionEnd != null ? t.selectionEnd : st;
+            const start = Date.now();
+            let done = false;
+            const cancel = () => {
+                done = true;
+                window.clearInterval(iv);
+                window.removeEventListener('pointerdown', cancel, true);
+                window.removeEventListener('keydown', cancel, true);
+            };
+            window.addEventListener('pointerdown', cancel, true);
+            window.addEventListener('keydown', cancel, true);
+            const iv = window.setInterval(() => {
+                if (done) {
+                    return;
+                }
+                if (Date.now() - start > 1000) {
+                    cancel();
+                    return;
+                }
+                const a = document.activeElement;
+                if (a && a !== t && a !== document.body) {
+                    cancel(); // user moved somewhere else
+                    return;
+                }
+                if (a === document.body && t.isConnected) {
+                    t.focus();
+                    try {
+                        t.setSelectionRange(st, en);
+                    } catch {
+                        // ignore
+                    }
+                    cancel();
+                }
+            }, 40);
+        }, true);
     }
 
     // ---------------------------------------------------------------- boot
     document.addEventListener('DOMContentLoaded', () => {
-        const saved = vscode.getState();
-        els.app.classList.remove('hidden');
-        document.body.setAttribute('data-kind', 'dark');
-        // Header lives inside the scroll container so columns stay aligned when
-        // the grid scrolls horizontally (resizable / wider-than-viewport columns).
-        els.bodyScroll.insertBefore(els.headRow, els.rowSpacer);
-        bindEvents();
-        renderHeader();
-        refreshRows();
-        if (saved && saved.filter) {
-            els.filter.value = saved.filter;
-        }
-        if (saved && saved.detailH) {
-            detailHeight = saved.detailH;
+        const saved = vscode.getState() || {};
+        try {
+            els.app.classList.remove('hidden');
+            document.body.setAttribute('data-kind', 'dark');
+
+            // Wrap grid + detail in a workspace so the detail can dock bottom /
+            // left / right / fullscreen.
+            const ws = document.createElement('div');
+            ws.id = 'workspace';
+            els.app.insertBefore(ws, els.detail);
+            ws.appendChild(els.gridWrap);
+            ws.appendChild(els.detail);
+            els.workspace = ws;
+
+            // Header lives inside the scroll container so columns stay aligned
+            // when the grid scrolls horizontally (wider-than-viewport columns).
+            els.bodyScroll.insertBefore(els.headRow, els.rowSpacer);
+
+            bindEvents();
+            renderHeader();
+            refreshRows();
+
+            if (saved.filter) {
+                els.filter.value = saved.filter;
+            }
+        } catch (err) {
+            console.error('[minecraft-language-editor] init error:', err);
+            const failEl = document.getElementById('initFail');
+            if (failEl) {
+                failEl.classList.remove('hidden');
+                failEl.textContent = t('errInitTxt') + ': ' +
+                    (err instanceof Error ? err.message : String(err)) +
+                    '\n' + ((err && err.stack) || '');
+            }
+        } finally {
+            // Always tell the extension host we are ready so it pushes the data,
+            // even if part of the UI setup above failed.
+            post({ type: 'ready' });
         }
     });
 
     window.addEventListener('beforeunload', () => {
         const s = vscode.getState() || {};
         s.filter = els.filter.value;
-        if (detailHeight) {
-            s.detailH = detailHeight;
-        }
         vscode.setState(s);
     });
 })();

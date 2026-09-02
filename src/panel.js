@@ -7,6 +7,7 @@
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
+const { t } = require('./i18n');
 const crypto = require('crypto');
 const detection = require('./detection');
 
@@ -36,20 +37,30 @@ function escapeHtml(text) {
     }[c]));
 }
 
-/** VS Code theme kind + editor font settings the GUI should follow. */
+/** VS Code theme kind + font settings the GUI should follow. Dedicated
+ * `minecraftLanguageEditor.fontSize/fontFamily` override the editor defaults
+ * when set. */
 function uiConfigMessage() {
     const editor = vscode.workspace.getConfiguration('editor');
+    const mine = vscode.workspace.getConfiguration('minecraftLanguageEditor');
     const kind = vscode.window.activeColorTheme ? vscode.window.activeColorTheme.kind : vscode.ColorThemeKind.Dark;
     const themeKind =
         kind === vscode.ColorThemeKind.Light ? 'light' :
         kind === vscode.ColorThemeKind.HighContrast ? 'hc' :
         kind === vscode.ColorThemeKind.HighContrastLight ? 'hcl' : 'dark';
+    const localFontSize = mine.get('fontSize', null);
+    const localFontFamily = mine.get('fontFamily', null);
     return {
         type: 'uiConfig',
-        fontSize: editor.get('fontSize', 14),
-        fontFamily: editor.get('fontFamily', '') || null,
+        fontSize: typeof localFontSize === 'number' ? localFontSize : editor.get('fontSize', 14),
+        fontFamily: (typeof localFontFamily === 'string' && localFontFamily) || editor.get('fontFamily', '') || null,
         themeKind
     };
+}
+
+/** Current folder layout sizes remembered across sessions (globalState). */
+function layoutStoreKey() {
+    return 'minecraftLanguageEditor.layout';
 }
 
 class EditorPanel {
@@ -79,14 +90,22 @@ class EditorPanel {
 
         this._handle = panel.webview.onDidReceiveMessage((msg) => this._onMessage(msg));
 
-        // Keep the GUI in sync with VS Code font settings and the active theme.
+        // Keep the GUI in sync with VS Code font settings / theme and with our
+        // own settings (confirmDelete / detailDock / font overrides).
         const pushUi = () => this._post(uiConfigMessage());
+        const pushCfg = () => this._post(this._configMessage());
         this._uiDisposables.push(
             vscode.workspace.onDidChangeConfiguration((e) => {
                 if (e.affectsConfiguration('editor.fontSize') ||
                     e.affectsConfiguration('editor.fontFamily') ||
-                    e.affectsConfiguration('editor.lineHeight')) {
+                    e.affectsConfiguration('editor.lineHeight') ||
+                    e.affectsConfiguration('minecraftLanguageEditor.fontSize') ||
+                    e.affectsConfiguration('minecraftLanguageEditor.fontFamily')) {
                     pushUi();
+                }
+                if (e.affectsConfiguration('minecraftLanguageEditor.confirmDelete') ||
+                    e.affectsConfiguration('minecraftLanguageEditor.detailDock')) {
+                    pushCfg();
                 }
             })
         );
@@ -104,6 +123,31 @@ class EditorPanel {
         } catch {
             // webview disposed
         }
+    }
+
+    /** Current confirmDelete + detailDock values pushed to the GUI. */
+    _configMessage() {
+        const c = vscode.workspace.getConfiguration('minecraftLanguageEditor');
+        return {
+            type: 'config',
+            confirmDelete: c.get('confirmDelete', true),
+            detailDock: c.get('detailDock', 'bottom')
+        };
+    }
+
+    _layoutKey() {
+        return this.model.folderUri.toString();
+    }
+
+    async _readLayout() {
+        const all = this.context.globalState.get(layoutStoreKey(), {}) || {};
+        return all[this._layoutKey()] || {};
+    }
+
+    async _writeLayout(part) {
+        const all = this.context.globalState.get(layoutStoreKey(), {}) || {};
+        all[this._layoutKey()] = { ...(all[this._layoutKey()] || {}), ...part };
+        await this.context.globalState.update(layoutStoreKey(), all);
     }
 
     async _onMessage(msg) {
@@ -127,6 +171,10 @@ class EditorPanel {
                     this._post({ type: 'notice', ...notice });
                 }
                 this._post(uiConfigMessage());
+                this._post(this._configMessage());
+                // Remembered layout sizes for this folder (survive restarts).
+                const lay = await this._readLayout();
+                this._post({ type: 'layoutCfg', bottomH: lay.bottomH || null, sideW: lay.sideW || null });
                 this._post(this.model.snapshot());
                 break;
             }
@@ -150,6 +198,33 @@ class EditorPanel {
                     vscode.env.clipboard.writeText(msg.text);
                 }
                 break;
+            case 'setConfirmDelete': {
+                const cfg = vscode.workspace.getConfiguration('minecraftLanguageEditor');
+                await cfg.update('confirmDelete', !!msg.value, vscode.ConfigurationTarget.Global);
+                break;
+            }
+            case 'layoutChange': {
+                // Remember sizes per folder; remember the dock by persisting it
+                // into the `detailDock` setting (so it survives restarts too).
+                const next = {};
+                if (typeof msg.bottomH === 'number') {
+                    next.bottomH = Math.round(msg.bottomH);
+                }
+                if (typeof msg.sideW === 'number') {
+                    next.sideW = Math.round(msg.sideW);
+                }
+                if (Object.keys(next).length) {
+                    await this._writeLayout(next);
+                }
+                const dock = String(msg.dock || '');
+                if (['bottom', 'left', 'right', 'full'].includes(dock)) {
+                    const cfg = vscode.workspace.getConfiguration('minecraftLanguageEditor');
+                    if (cfg.get('detailDock', 'bottom') !== dock) {
+                        await cfg.update('detailDock', dock, vscode.ConfigurationTarget.Global);
+                    }
+                }
+                break;
+            }
             case 'noticeAction': {
                 const id = String(msg.id || '');
                 if (id.startsWith('openRaw:')) {
@@ -172,6 +247,11 @@ class EditorPanel {
 
     attach() {
         this.panelId = this.model.attachPanel((message) => this._post(message));
+    }
+
+    /** Public post — used by native webview context-menu commands. */
+    post(message) {
+        this._post(message);
     }
 
     dispose() {
@@ -206,6 +286,24 @@ class LangEditorProvider {
     constructor(context, registry) {
         this.context = context;
         this.registry = registry;
+        /** @type {Set<EditorPanel>} open GUI panels (for native context menus) */
+        this.panels = new Set();
+    }
+
+    registerPanel(panel, webviewPanel) {
+        this.panels.add(panel);
+        webviewPanel.onDidDispose(() => this.panels.delete(panel));
+    }
+
+    /** Send a message to every open GUI panel (context-menu commands). */
+    broadcast(message) {
+        for (const panel of this.panels) {
+            try {
+                panel.post(message);
+            } catch {
+                // panel gone
+            }
+        }
     }
 
     /**
@@ -226,7 +324,7 @@ class LangEditorProvider {
             loadError = err instanceof Error ? err.message : String(err);
         }
         if (!model || model.isDisposed()) {
-            const msg = '无法读取语言文件目录：' + loadError;
+            const msg = t('folderReadFail') + ': ' + loadError;
             webviewPanel.webview.html = `<!DOCTYPE html><html lang="zh-CN"><meta charset="UTF-8">` +
                 `<body style="font-family:sans-serif;padding:24px;color:#c0392b">${escapeHtml(msg)}</body></html>`;
             return;
@@ -236,6 +334,7 @@ class LangEditorProvider {
             bindName: name
         });
         panel.attach();
+        this.registerPanel(panel, webviewPanel);
     }
 }
 

@@ -2,7 +2,7 @@
   "name": "minecraft-language-file-gui-editor",
   "displayName": "Minecraft Language File GUI Editor",
   "description": "GUI editor for Minecraft language files (en_us.json / zh_cn.json / ...): multi-language grid, add/delete keys across all files, undo/redo.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "wifi-left",
   "license": "MIT",
   "engines": {
@@ -25,6 +25,43 @@
         "command": "minecraftLanguageEditor.openEditor",
         "title": "Minecraft 语言文件: 用 GUI 编辑器打开",
         "category": "Minecraft Lang"
+      },
+      {
+        "command": "minecraftLanguageEditor.copyKey",
+        "title": "Copy key",
+        "category": "Minecraft Lang"
+      },
+      {
+        "command": "minecraftLanguageEditor.copyValue",
+        "title": "Copy translation",
+        "category": "Minecraft Lang"
+      },
+      {
+        "command": "minecraftLanguageEditor.copyEntry",
+        "title": "Copy entry (all languages)",
+        "category": "Minecraft Lang"
+      },
+      {
+        "command": "minecraftLanguageEditor.deleteContextKey",
+        "title": "Delete key",
+        "category": "Minecraft Lang"
+      },
+      {
+        "command": "minecraftLanguageEditor.addKeyShortcut",
+        "title": "Add a new key",
+        "category": "Minecraft Lang"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "minecraftLanguageEditor.addKeyShortcut",
+        "key": "ctrl+enter",
+        "when": "webview == 'minecraftLanguageEditor.gridEditor'"
+      },
+      {
+        "command": "minecraftLanguageEditor.addKeyShortcut",
+        "key": "ctrl+shift+enter",
+        "when": "webview == 'minecraftLanguageEditor.gridEditor'"
       }
     ],
     "menus": {
@@ -33,6 +70,28 @@
           "command": "minecraftLanguageEditor.openEditor",
           "when": "resourceExtname == .json && resourceScheme == file",
           "group": "navigation@50"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "minecraftLanguageEditor.copyKey",
+          "when": "webview == 'minecraftLanguageEditor.gridEditor' && (webviewSection == 'gridRow' || webviewSection == 'gridValue')",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "minecraftLanguageEditor.copyValue",
+          "when": "webview == 'minecraftLanguageEditor.gridEditor' && webviewSection == 'gridValue'",
+          "group": "1_copy@2"
+        },
+        {
+          "command": "minecraftLanguageEditor.copyEntry",
+          "when": "webview == 'minecraftLanguageEditor.gridEditor' && (webviewSection == 'gridRow' || webviewSection == 'gridValue')",
+          "group": "1_copy@3"
+        },
+        {
+          "command": "minecraftLanguageEditor.deleteContextKey",
+          "when": "webview == 'minecraftLanguageEditor.gridEditor' && (webviewSection == 'gridRow' || webviewSection == 'gridValue')",
+          "group": "9_delete@1"
         }
       ]
     },
@@ -219,7 +278,37 @@
         "minecraftLanguageEditor.confirmDelete": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "删除翻译 key 前弹出确认框。"
+          "markdownDescription": "删除翻译 key 前弹出确认框。在确认框中勾选“此后不再提醒”会自动关闭本项（可在此重新开启）。"
+        },
+        "minecraftLanguageEditor.detailDock": {
+          "type": "string",
+          "enum": ["bottom", "left", "right", "full"],
+          "enumDescriptions": [
+            "停靠到编辑器底部",
+            "停靠到左侧（与表格并排）",
+            "停靠到右侧（与表格并排）",
+            "全屏编辑"
+          ],
+          "default": "bottom",
+          "markdownDescription": "详情编辑面板的默认停靠位置。在 GUI 中切换停靠位置会自动写入本设置（关闭编辑器后仍会记住）；也可在这里直接修改。"
+        },
+        "minecraftLanguageEditor.fontSize": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": 6,
+          "maximum": 48,
+          "markdownDescription": "GUI 中所有编辑文本的字号（像素）。留空（null）时跟随 VS Code `editor.fontSize`；一旦设置即独立于代码编辑器字号。"
+        },
+        "minecraftLanguageEditor.fontFamily": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "markdownDescription": "GUI 中所有编辑文本的字体族。留空（null）时跟随 VS Code `editor.fontFamily`。"
         },
         "minecraftLanguageEditor.undoLimit": {
           "type": "number",

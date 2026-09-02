@@ -12,6 +12,7 @@ const path = require('path');
 const { LangEditorProvider, VIEW_TYPE } = require('./src/panel');
 const { ModelRegistry } = require('./src/model');
 const detection = require('./src/detection');
+const { t } = require('./src/i18n');
 
 const cmdOpenEditor = 'minecraftLanguageEditor.openEditor';
 
@@ -21,14 +22,14 @@ async function openEditorFor(uri) {
     }
     const name = path.basename(uri.fsPath);
     if (!detection.isLangFileName(name)) {
-        vscode.window.showInformationMessage(`${name} 不是 Minecraft 语言文件（如 en_us.json / zh_cn.json）。`);
+        vscode.window.showInformationMessage(`${t('notLangFile')}: ${name}${t('langFileHint')}`);
         return false;
     }
     try {
         await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
         return true;
     } catch (err) {
-        vscode.window.showErrorMessage('打开语言编辑器失败: ' + (err instanceof Error ? err.message : String(err)));
+        vscode.window.showErrorMessage(t('openEditorFail') + ': ' + (err instanceof Error ? err.message : String(err)));
         return false;
     }
 }
@@ -39,10 +40,35 @@ function activate(context) {
 
     // Native custom editor — appears in "Open With..." / "Reopen Editor With..."
     // for Minecraft language files. priority: option => never takes over by default.
+    const provider = new LangEditorProvider(context, registry);
     context.subscriptions.push(
-        vscode.window.registerCustomEditorProvider(VIEW_TYPE, new LangEditorProvider(context, registry), {
+        vscode.window.registerCustomEditorProvider(VIEW_TYPE, provider, {
             webviewOptions: { retainContextWhenHidden: true },
             supportsMultipleEditorsPerDocument: false
+        })
+    );
+
+    // Native webview context-menu actions (webview/context contributions).
+    // The panel that was right-clicked remembers the row; the chosen command is
+    // routed back into that panel as {type:'ctxCmd'}.
+    const ctxMenuCommands = {
+        'minecraftLanguageEditor.copyKey': 'copyKey',
+        'minecraftLanguageEditor.copyValue': 'copyValue',
+        'minecraftLanguageEditor.copyEntry': 'copyEntry',
+        'minecraftLanguageEditor.deleteContextKey': 'deleteContextKey'
+    };
+    for (const [cmdId, action] of Object.entries(ctxMenuCommands)) {
+        context.subscriptions.push(
+            vscode.commands.registerCommand(cmdId, () => {
+                provider.broadcast({ type: 'ctxCmd', cmd: action });
+            })
+        );
+    }
+
+    // Ctrl+Enter / Ctrl+Shift+Enter (contributed keybindings) → new key.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('minecraftLanguageEditor.addKeyShortcut', () => {
+            provider.broadcast({ type: 'cmdAddKey' });
         })
     );
 
@@ -55,7 +81,7 @@ function activate(context) {
                 uri = active ? active.document.uri : undefined;
             }
             if (!uri) {
-                vscode.window.showInformationMessage('请先打开一个 Minecraft 语言文件（如 en_us.json / zh_cn.json），或右键资源管理器中的语言文件。');
+                vscode.window.showInformationMessage(t('pickLangHint'));
                 return;
             }
             await openEditorFor(uri);

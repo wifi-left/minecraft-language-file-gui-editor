@@ -15,20 +15,20 @@
                 <span class="folder-badge" title="" id="folderBadge"></span>
                 <span id="bindInfo" class="muted"></span>
                 <div class="spacer"></div>
-                <button id="btnReload" class="tb" title="从磁盘重新加载 (会清空撤销历史)">⟳ <span data-i18n="reload">重新加载</span></button>
-                <button id="btnUndo" class="tb" title="撤销 (Ctrl+Z)" disabled>↩ 撤销</button>
-                <button id="btnRedo" class="tb" title="重做 (Ctrl+Y)" disabled>↪ 重做</button>
-                <button id="btnAdd" class="tb accent" title="添加一个新的翻译 key (将同步写入所有语言文件)">＋ 添加 key</button>
-                <button id="btnDelete" class="tb danger" title="删除选中的翻译 (从所有语言文件删除)" disabled>🗑 删除</button>
+                <button id="btnReload" class="tb" data-i18n-title="uiReloadTitle" title="从磁盘重载">⟳ <span data-i18n="reload">重载</span></button>
+                <button id="btnUndo" class="tb" data-i18n-title="uiUndoTitle" title="撤销 (Ctrl+Z)" disabled data-i18n="uiUndo">↩ 撤销</button>
+                <button id="btnRedo" class="tb" data-i18n-title="uiRedoTitle" title="重做 (Ctrl+Y)" disabled data-i18n="uiRedo">↪ 重做</button>
+                <button id="btnAdd" class="tb accent" data-i18n-title="uiAddTitle" title="新增翻译 key（写入所有语言）" data-i18n="uiAdd">＋ 添加 key</button>
+                <button id="btnDelete" class="tb danger" data-i18n-title="uiDeleteTitle" title="删除所选（所有语言）" disabled data-i18n="uiDelete">🗑 删除</button>
             </div>
             <div class="tb-row">
                 <div class="filter-wrap">
                     <span class="filter-icon">🔍</span>
                     <input id="filterInput" type="text" spellcheck="false"
-                           placeholder="筛选: key 或任意语言译文  ( / 聚焦)">
+                           data-i18n-ph="uiFilterPh" placeholder="筛 key / 译文  (/)">
                 </div>
-                <label class="only-missing" title="仅显示在当前语言中为空(未翻译)的行">
-                    <input type="checkbox" id="onlyMissingCheck"> 仅显示未翻译
+                <label class="only-missing" title="仅当前语言为空的条目">
+                    <input type="checkbox" id="onlyMissingCheck" data-i18n-ctx="uiOnlyMissing"> <span data-i18n="uiOnlyMissing">仅未译</span>
                 </label>
                 <div class="spacer"></div>
                 <div class="lang-chips" id="langChips"></div>
@@ -38,15 +38,15 @@
         <div id="notices"></div>
 
         <div id="addBar" class="hidden">
-            <input id="addKeyInput" type="text" spellcheck="false" placeholder="新 key，如 item.minecraft.custom_sword">
+            <input id="addKeyInput" type="text" spellcheck="false" data-i18n-ph="uiAddKeyPh" placeholder="key，如 item.minecraft.custom_sword">
             <textarea id="addValueInput" rows="2" spellcheck="false"
-                      placeholder="该语言的译文（其它语言将留空 = 未翻译）"></textarea>
+                      data-i18n-ph="uiAddValPh" placeholder="译文（其它语言留空）"></textarea>
             <div class="add-bar-buttons">
-                <span class="muted">语言:</span>
+                <span class="muted" data-i18n="uiLang">语言</span>
                 <div id="addLangSelect"></div>
                 <div class="spacer"></div>
-                <button id="addCancel" class="tb">取消</button>
-                <button id="addOk" class="tb accent">添加</button>
+                <button id="addCancel" class="tb" data-i18n="uiCancel">取消</button>
+                <button id="addOk" class="tb accent" data-i18n="uiOkAdd">添加</button>
             </div>
         </div>
 
@@ -62,11 +62,11 @@
 
         <section id="detail" class="hidden">
             <div class="detail-head">
-                <span class="muted" data-i18n="detailTitle">选中翻译的详情 —— 修改会保存到对应语言文件</span>
+                <span class="muted" data-i18n="detailTitle">详情</span>
                 <span class="spacer"></span>
                 <span id="placeholderWarn" class="warn-chip hidden" title=""></span>
-                <button id="btnCopyKey" class="tb small">复制 key</button>
-                <button id="btnDeleteOne" class="tb small danger">删除此 key</button>
+                <button id="btnCopyKey" class="tb small" data-i18n="ctxCopyKey">复制 key</button>
+                <button id="btnDeleteOne" class="tb small danger" data-i18n="ctxDelete">删除此 key</button>
                 <button id="btnCloseDetail" class="tb small" title="Esc">✕</button>
             </div>
             <div id="detailRows"></div>
@@ -75,7 +75,7 @@
         <footer id="statusbar">
             <span id="statText"></span>
             <span class="spacer"></span>
-            <span id="saveState" class="muted">✓ 自动保存</span>
+            <span id="saveState" class="muted">✓ <span data-i18n="uiAutoSave">自动保存</span></span>
         </footer>
     </div>
 

@@ -7,6 +7,7 @@
 
 const vscode = require('vscode');
 const path = require('path');
+const { t } = require('./i18n');
 const detection = require('./detection');
 const langSet = require('./langSet');
 
@@ -85,7 +86,7 @@ class FolderModel {
                 return;
             }
             if (this._sourceUris.has(p)) {
-                this._scheduleExternalReload(`外部保存: ${path.basename(doc.uri.fsPath)}`);
+                this._scheduleExternalReload(t('reasonSave', { f: path.basename(doc.uri.fsPath) }));
             }
         });
         this._sourceUris = new Set();
@@ -198,7 +199,7 @@ class FolderModel {
     async _doOpNow(op, originPanelId) {
         const s = this._state;
         if (!s) {
-            return { ok: false, error: '模型未就绪' };
+            return { ok: false, error: t('modelNotReady') };
         }
         const before = this._serializeMap();
         const res = langSet.applyOp(s, op);
@@ -351,7 +352,7 @@ class FolderModel {
                 return;
             }
         }
-        this._scheduleExternalReload('文件系统变化');
+        this._scheduleExternalReload(t('reasonFs'));
     }
 
     _scheduleExternalReload(reason) {
@@ -371,7 +372,7 @@ class FolderModel {
                 if (this._mapEqual(current, next) && this._state.broken.length === 0) {
                     return; // nothing observable changed (e.g. our own formatting)
                 }
-                this.broadcast({ type: 'notice', level: 'info', text: `已从磁盘重新加载（${reason}）` });
+                this.broadcast({ type: 'notice', level: 'info', text: t('reloaded', { r: reason }) });
                 this.broadcast(this.snapshot());
             });
         }, 350);
@@ -445,8 +446,8 @@ class FolderModel {
             this.broadcast({
                 type: 'notice',
                 level: 'error',
-                text: `${b.name}: ${b.error}（已跳过该文件，不会被改写）`,
-                action: { id: 'openRaw:' + b.name, label: '打开原文件查看' }
+                text: t('brokenSkip', { f: b.name, e: b.error }),
+                action: { id: 'openRaw:' + b.name, label: t('openRaw') }
             });
             return;
         }
@@ -470,7 +471,7 @@ class FolderModel {
                 readErrors.push({
                     code: code || '',
                     name,
-                    error: '无法读取文件: ' + (err instanceof Error ? err.message : String(err))
+                    error: t('readFail', { e: err instanceof Error ? err.message : String(err) })
                 });
             }
         }
@@ -502,13 +503,13 @@ class FolderModel {
                 this.broadcast({
                     type: 'notice',
                     level: 'warn',
-                    text: `${path.basename(doc.uri.fsPath)} 在原始 JSON 标签中有未保存修改。GUI 修改时会跳过该文件，请先保存原始标签再用 GUI 继续。`,
-                    action: { id: 'saveDoc:' + p, label: '保存该文件' }
+                    text: t('dirtySkip', { f: path.basename(doc.uri.fsPath) }),
+                    action: { id: 'saveDoc:' + p, label: t('saveFile') }
                 });
             }
             return;
         }
-        this._scheduleExternalReload(`外部修改: ${path.basename(doc.uri.fsPath)}`);
+        this._scheduleExternalReload(t('reasonExternal', { f: path.basename(doc.uri.fsPath) }));
     }
 
     /**
@@ -529,7 +530,7 @@ class FolderModel {
                 if (source !== doc.getText()) {
                     if (!this._dirtyWarned.has(code)) {
                         this._dirtyWarned.add(code);
-                        errors.push({ code, name, error: '存在未保存的原始编辑，已跳过' });
+                        errors.push({ code, name, error: t('skipUnsaved') });
                     }
                     continue;
                 }
@@ -572,7 +573,7 @@ class FolderModel {
         const entry = from.pop();
         if (!entry) {
             if (originPanelId) {
-                this._reply(originPanelId, { type: 'opError', error: direction === 'undo' ? '没有可撤销的操作' : '没有可重做的操作' });
+                this._reply(originPanelId, { type: 'opError', error: direction === 'undo' ? t('noneUndo') : t('noneRedo') });
             }
             return { ok: false, error: 'empty' };
         }
@@ -582,7 +583,7 @@ class FolderModel {
         // canonical key order the history entry recorded.
         await this._reloadInternal({ clearHistory: false, notifyBroken: false, preferredKeys: target.keys });
         to.push(entry);
-        this.broadcast({ type: 'notice', level: 'info', text: direction === 'undo' ? '已撤销' : '已重做' });
+        this.broadcast({ type: 'notice', level: 'info', text: direction === 'undo' ? t('undone') : t('redone') });
         this.broadcast(this.snapshot());
         this._reportPersistErrors(errors, null);
         if (originPanelId) {
@@ -599,8 +600,8 @@ class FolderModel {
             this.broadcast({
                 type: 'notice',
                 level: 'error',
-                text: `写入 ${e.name} 失败: ${e.error}`,
-                action: { id: 'openRaw:' + e.name, label: '打开原文件查看' }
+                text: t('writeFail', { f: e.name, e: e.error }),
+                action: { id: 'openRaw:' + e.name, label: t('openRaw') }
             });
         }
         void ctx;

@@ -231,7 +231,7 @@ button.tb.small { padding: 2px 8px; font-size: 12px; }
     white-space: pre;
 }
 #grid .cell.langcell.empty { color: var(--code-dim); font-style: italic; }
-#grid .cell.langcell.empty::after { content: '〔未翻译〕'; font-style: italic; opacity: 0.85; }
+#grid .cell.langcell.empty::after { content: var(--empty-marker, '〔未翻译〕'); font-style: italic; opacity: 0.85; }
 #headRow .cell.langcol, #headRow .cell.keycol { cursor: pointer; }
 #headRow .cell.langcol:hover, #headRow .cell.keycol:hover { background: var(--row-hover); }
 #headRow .cell.langcol.current { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -319,31 +319,69 @@ body.colresizing { user-select: none; cursor: col-resize; }
     font-family: var(--edit-font-family);
 }
 
-/* ---------------- detail ---------------- */
-#detailResizer {
-    flex: none;
-    height: 5px;
-    cursor: row-resize;
-    touch-action: none;
-    background: transparent;
-    border-bottom: 1px solid transparent;
+/* ---------------- detail + dock layout ---------------- */
+#app { position: relative; }
+#workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
 }
-#detailResizer:hover,
-#detailResizer.dragging {
+#workspace.dock-bottom { flex-direction: column; }
+#workspace.dock-left, #workspace.dock-right { flex-direction: row; }
+#gridWrap { min-width: 0; }
+
+#dockDivider {
+    flex: none;
+    background: transparent;
+    z-index: 9;
+}
+#workspace.dock-bottom #dockDivider {
+    height: 5px;
+    width: auto;
+    cursor: row-resize;
+}
+#workspace.dock-left #dockDivider,
+#workspace.dock-right #dockDivider {
+    width: 5px;
+    height: auto;
+    cursor: col-resize;
+}
+#dockDivider:hover,
+#dockDivider.dragging {
     background: var(--accent);
     opacity: 0.55;
-    border-bottom-color: var(--border);
 }
-body.dragging { user-select: none; cursor: row-resize; }
+body.dock-resizing { user-select: none; }
+
 #detail {
     border-top: 1px solid var(--border);
     background: var(--detail-bg);
-    flex: none;
-    max-height: 46vh;
     display: flex;
     flex-direction: column;
+    max-height: 46vh;
+    min-height: 0;
+    min-width: 0;
 }
-#detail.custom { max-height: none; }
+#workspace.dock-bottom #detail { flex: none; }
+#workspace.dock-left #detail,
+#workspace.dock-right #detail {
+    max-height: none;
+    height: 100%;
+    flex: none;
+    border-top: none;
+    border-left: 1px solid var(--border);
+}
+#workspace.dock-left #detail { border-left: none; border-right: 1px solid var(--border); }
+#detail.fullscreen {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    max-height: none;
+    border: none;
+    background: var(--bg);
+}
+
 .detail-head {
     display: flex;
     align-items: center;
@@ -352,7 +390,21 @@ body.dragging { user-select: none; cursor: row-resize; }
     border-bottom: 1px solid var(--border);
     flex: none;
 }
-#detailRows { overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+.detail-head .head-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-nav { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.dock-btn-group { display: inline-flex; align-items: center; gap: 2px; flex: none; opacity: 0.75; }
+.dock-btn-group:hover { opacity: 1; }
+.dock-btn-group button.active { box-shadow: inset 0 0 0 1px var(--accent); }
+#detail.fullscreen .dock-btn-group { opacity: 1; }
+.detail-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+}
+#detailRows { flex: 1; overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .detail-lang { display: flex; flex-direction: column; gap: 2px; }
 .detail-lang .dl-label {
     display: flex;
@@ -469,6 +521,96 @@ body.dragging { user-select: none; cursor: row-resize; }
     color: var(--vscode-editorSuggestWidget-selectedForeground, #ffffff);
 }
 .completion-popup .c-row.sel .k { color: inherit; opacity: 0.8; }
+
+/* ---------------- context menu ---------------- */
+.ctx-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 200px;
+    max-width: 340px;
+    background: var(--vscode-menubar-selectionBackground, var(--vscode-editorWidget-background, var(--input-bg)));
+    color: var(--vscode-menubar-selectionForeground, var(--fg));
+    border: 1px solid var(--vscode-menu-border, var(--border));
+    border-radius: 4px;
+    padding: 4px 0;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    font-size: var(--vscode-font-size, 12px);
+}
+.ctx-menu .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.ctx-menu .ctx-item:hover {
+    background: var(--vscode-menu-selectionBackground, var(--accent));
+    color: var(--vscode-menu-selectionForeground, #ffffff);
+}
+.ctx-menu .ctx-item .l { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.ctx-menu .ctx-item .hint { opacity: 0.7; font-size: 11px; }
+.ctx-menu .ctx-sep { height: 1px; margin: 4px 8px; background: var(--border); }
+.ctx-menu .ctx-item.danger { color: var(--danger); }
+
+/* ---------------- modal dialogs (confirm / prompt) ---------------- */
+.modal-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 14vh;
+}
+.modal-box {
+    min-width: 300px;
+    max-width: 560px;
+    background: var(--vscode-editorWidget-background, var(--input-bg));
+    color: var(--fg);
+    border: 1px solid var(--vscode-widget-border, var(--border));
+    border-radius: 6px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.modal-msg {
+    white-space: pre-wrap;
+    line-height: 1.55;
+    font-family: var(--vscode-font-family, system-ui, sans-serif);
+    font-size: var(--vscode-font-size, 13px);
+    max-height: 46vh;
+    overflow-y: auto;
+}
+.modal-input {
+    background: var(--input-bg);
+    color: var(--input-fg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-family: var(--edit-font-family);
+    font-size: var(--edit-font-size);
+}
+.modal-input:focus { outline: 1px solid var(--accent); }
+.modal-remember {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    user-select: none;
+}
+.modal-remember input { cursor: pointer; }
+.modal-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
 
 /* ---------------- statusbar ---------------- */
 #statusbar {
